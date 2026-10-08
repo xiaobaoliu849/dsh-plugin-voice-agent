@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { VoiceAgentController, VoiceAgentState } from '../controller.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { VoiceAgentKey } from '../locales.ts'
 import styles from './VoiceAgent.module.css'
 
@@ -13,6 +14,8 @@ import styles from './VoiceAgent.module.css'
 export interface VoiceAgentDockProps {
   controller: VoiceAgentController
   t: (key: VoiceAgentKey) => string
+  /** The conversation this composer belongs to (session-scoped slot standard prop). */
+  sessionId?: SessionId | undefined
 }
 
 const PHASE_KEY: Record<Exclude<VoiceAgentState['phase'], 'idle'>, VoiceAgentKey> = {
@@ -36,8 +39,9 @@ const BARS = 6
  * @param props - the call controller and locale lookup.
  * @returns the dock.
  */
-export function VoiceAgentDock({ controller, t }: VoiceAgentDockProps) {
+export function VoiceAgentDock({ controller, t, sessionId }: VoiceAgentDockProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  useEffect(() => { controller.setSession(sessionId) }, [controller, sessionId])
   const levels = useLevels(controller, state.phase === 'live')
   const linesRef = useRef<HTMLUListElement>(null)
   useEffect(() => {

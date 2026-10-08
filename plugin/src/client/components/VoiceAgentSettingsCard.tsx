@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { VoiceAgentKey } from '../locales.ts'
 import styles from './VoiceAgent.module.css'
 
@@ -27,7 +27,7 @@ export interface CredentialAccess {
 
 /** Props injected by the slot registration. */
 export interface VoiceAgentSettingsCardProps {
-  scope: SettingsScope<VoiceAgentSettings>
+  scope: ConfigForm<VoiceAgentSettings>
   credentials: CredentialAccess
   voices: readonly string[]
   t: (key: VoiceAgentKey) => string
@@ -66,11 +66,12 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
 
   const save = async (): Promise<void> => {
     try {
-      for (const field of ['model', 'voice', 'instructions'] as const) {
-        if (form[field] !== value[field]) await scope.set(field, form[field])
-      }
-      setDraft(undefined)
-      setNotice('saved')
+      const ops = (['model', 'voice', 'instructions'] as const)
+        .filter(field => form[field] !== value[field])
+        .map(field => ({ op: 'set' as const, path: [field], value: form[field] }))
+      const accepted = await scope.mutate(ops, snapshot.revision)
+      if (accepted) setDraft(undefined)
+      setNotice(accepted ? 'saved' : 'saveFailed')
     } catch {
       // The scope reloads Host state after a refused write; the notice is the only report.
       setNotice('saveFailed')
@@ -91,7 +92,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
 
   const voiceOptions = voices.includes(form.voice) ? voices : [form.voice, ...voices]
   return (
-    <li className={styles.card}>
+    <div className={styles.card}>
       <div>
         <div className={styles.cardTitle}>{t('cardTitle')}</div>
         <div className={styles.cardDescription}>{t('cardDescription')}</div>
@@ -123,7 +124,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           id="voice-agent-model"
           className={styles.input}
           value={form.model}
-          disabled={!snapshot.writable}
+          disabled={snapshot.status !== 'ready'}
           onChange={(event) => { edit({ model: event.target.value }) }}
         />
       </div>
@@ -133,7 +134,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           id="voice-agent-voice"
           className={styles.input}
           value={form.voice}
-          disabled={!snapshot.writable}
+          disabled={snapshot.status !== 'ready'}
           onChange={(event) => { edit({ voice: event.target.value }) }}
         >
           {voiceOptions.map(voice => <option key={voice} value={voice}>{voice}</option>)}
@@ -145,17 +146,17 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           id="voice-agent-instructions"
           className={`${styles.input} ${styles.textarea}`}
           value={form.instructions}
-          disabled={!snapshot.writable}
+          disabled={snapshot.status !== 'ready'}
           onChange={(event) => { edit({ instructions: event.target.value }) }}
         />
         <span className={styles.fieldHint}>{t('instructionsHint')}</span>
       </div>
       <div className={styles.row}>
-        <button type="button" className={styles.button} disabled={!dirty || !snapshot.writable} onClick={() => { void save() }}>
+        <button type="button" className={styles.button} disabled={!dirty || snapshot.status !== 'ready'} onClick={() => { void save() }}>
           {t('save')}
         </button>
         {notice !== null && <span className={styles.notice} role="status">{t(notice)}</span>}
       </div>
-    </li>
+    </div>
   )
 }

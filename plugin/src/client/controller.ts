@@ -6,6 +6,7 @@
  */
 
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { startMic, SpeechPlayer, type MicCapture } from './audio.ts'
 import { HarnessBridge, type AgentActivity } from './bridge.ts'
 
@@ -56,9 +57,19 @@ export class VoiceAgentController {
   private mic: MicCapture | undefined
   private player: SpeechPlayer | undefined
   private bridge: HarnessBridge | undefined
+  private sessionId: SessionId | undefined
 
   /** @param sessions - the client sessions service the bridge drives. */
   constructor(private readonly sessions: ISessions) {}
+
+  /**
+   * Point the call at the conversation the user is viewing. The composer's
+   * session-scoped controls report it on every render.
+   * @param id - the viewed session, or undefined while none is open.
+   */
+  setSession(id: SessionId | undefined): void {
+    this.sessionId = id
+  }
 
   /** @returns the current snapshot (stable until the next change). */
   getSnapshot = (): VoiceAgentState => this.state
@@ -87,6 +98,7 @@ export class VoiceAgentController {
     await player.resume()
     this.bridge = new HarnessBridge(
       this.sessions,
+      () => this.sessionId,
       (text) => { this.sendUpdate(text) },
       (activity) => { this.set({ ...this.state, activity }) },
     )

@@ -1,8 +1,7 @@
 /**
  * @deepseek-ai/dsh-host-voice-agent — host half of realtime voice control.
  *
- * Registers the `voice-agent` settings namespace, a status route, and the
- * `/api/voice-agent/ws` upgrade that pairs each browser call with a Gemini
+ * Serves a status route and the `/api/voice-agent/ws` upgrade that pairs each browser call with a Gemini
  * Live session (see {@link runLiveCall}). The Gemini API key is resolved from
  * the credentials store on every call start and never reaches the browser.
  * @module @deepseek-ai/dsh-host-voice-agent
@@ -13,17 +12,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-settings'
 import { runLiveCall } from './live.ts'
-import {
-  VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema,
-  type VoiceAgentSettings,
-} from './settings.ts'
+import type { Config, VoiceAgentSettings } from './settings.ts'
 import { FUNCTION_DECLARATIONS, buildInstructions } from './tools.ts'
 
 export {
-  DEFAULT_API_KEY_ENV, DEFAULT_MODEL, VOICE_AGENT_NAMESPACE, VOICE_AGENT_VOICES,
-  VoiceAgentSettingsSchema, type VoiceAgentSettings,
+  Config, DEFAULT_API_KEY_ENV, DEFAULT_MODEL, VOICE_AGENT_VOICES, type VoiceAgentSettings,
 } from './settings.ts'
 export { VOICE_AGENT_TOOLS } from './tools.ts'
 export type { BrowserMessage, HostMessage } from './live.ts'
@@ -31,16 +25,24 @@ export type { BrowserMessage, HostMessage } from './live.ts'
 /** Route prefix owned by the voice-agent surface. */
 export const VOICE_AGENT_API_PATH = '/api/voice-agent'
 
+/** Plugin name; the bundle's profile entry id is also `voice-agent`. */
+export const name = 'voice-agent'
+
 /** Host services this plugin requires before it can compose. */
-export const inject = ['settings', 'webServer']
+export const inject = ['webServer']
 
 /**
- * Register the settings namespace, the status route, and the call upgrade.
+ * Register the status route and the call upgrade.
  * @param ctx - host plugin context.
+ * @param config - live references to the plugin Config.
  */
-export function apply(ctx: Context): void {
-  const scope = ctx.settings.register(VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema)
-  const settings = (): VoiceAgentSettings => scope.get()
+export function apply(ctx: Context, config: Config): void {
+  const settings = (): VoiceAgentSettings => ({
+    model: config.model.get(),
+    voice: config.voice.get(),
+    apiKeyEnv: config.apiKeyEnv.get(),
+    instructions: config.instructions.get(),
+  })
 
   const resolveApiKey = async (): Promise<string | undefined> => {
     const ref = credentialRef(settings().apiKeyEnv)

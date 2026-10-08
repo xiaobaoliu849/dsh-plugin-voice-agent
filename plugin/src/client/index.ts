@@ -1,6 +1,6 @@
 /**
  * Voice-agent browser plugin: the composer mic button, the call dock, and the
- * Settings → Plugins card. One {@link VoiceAgentController} owns the call; its
+ * configuration page on the bundle's Settings → Plugins page. One {@link VoiceAgentController} owns the call; its
  * bridge drives the session the user is viewing through `ctx.sessions`.
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -9,8 +9,8 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { VoiceAgentButton } from './components/VoiceAgentButton.tsx'
 import { VoiceAgentDock } from './components/VoiceAgentDock.tsx'
 import {
@@ -25,13 +25,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Locale namespace and settings namespace (matches the host plugin). */
+/** Locale namespace. */
 const NS = 'voice-agent'
+
+/** Profile entry id of the host plugin row; its Config form is the settings page's data. */
+const ENTRY_ID = 'voice-agent'
+
+/** npm package name; keys the bundle's configuration page. */
+const PACKAGE_NAME = 'dsh-plugin-voice-agent'
 
 /** Prebuilt Gemini Live voices (mirrors the host package's VOICE_AGENT_VOICES). */
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 
-export const inject = ['slots', 'locale', 'sessions', 'settingsScope', 'remote', 'remote.credentials']
+export const inject = ['slots', 'locale', 'sessions', 'configForms', 'remote', 'remote.credentials']
 
 /**
  * Register the dictionaries, the mic button, the dock, and the settings card.
@@ -63,7 +69,7 @@ export function apply(ctx: Context): void {
     VoiceAgentDock,
   ))
 
-  const scope = ctx.settingsScope.bind<VoiceAgentSettings>({ namespace: NS })
+  const scope = ctx.configForms.get(ENTRY_ID) as unknown as ConfigForm<VoiceAgentSettings>
   const credentials: CredentialAccess = {
     configured: async (ref) => {
       const response = await ctx.remote.credentials.describe([ref])
@@ -74,10 +80,10 @@ export function apply(ctx: Context): void {
       if (!response.ok) throw new Error(response.error.message)
     },
   }
-  ctx.slots.inject('settings.plugin.item', function* () {
+  ctx.slots.inject('plugins.bundle.config', function* () {
     yield ctx.slots.register({
-      name: 'settings.plugin.item',
-      key: NS,
+      name: 'plugins.bundle.config',
+      key: PACKAGE_NAME,
       inject: () => ({ scope, credentials, voices: VOICES, t }),
     }, VoiceAgentSettingsCard)
   })

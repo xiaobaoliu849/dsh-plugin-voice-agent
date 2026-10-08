@@ -3,8 +3,9 @@
  * call that controls the agent.
  */
 
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import type { VoiceAgentController } from '../controller.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { VoiceAgentKey } from '../locales.ts'
 import styles from './VoiceAgent.module.css'
 
@@ -12,6 +13,8 @@ import styles from './VoiceAgent.module.css'
 export interface VoiceAgentButtonProps {
   controller: VoiceAgentController
   t: (key: VoiceAgentKey) => string
+  /** The conversation this composer belongs to (session-scoped slot standard prop). */
+  sessionId?: SessionId | undefined
 }
 
 /**
@@ -19,8 +22,9 @@ export interface VoiceAgentButtonProps {
  * @param props - the call controller and locale lookup.
  * @returns the button.
  */
-export function VoiceAgentButton({ controller, t }: VoiceAgentButtonProps) {
+export function VoiceAgentButton({ controller, t, sessionId }: VoiceAgentButtonProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  useEffect(() => { controller.setSession(sessionId) }, [controller, sessionId])
   const active = state.phase !== 'idle' && state.phase !== 'error'
   const label = active ? t('endCall') : t('startCall')
   return (

@@ -8,11 +8,21 @@
  * request id identifies the turn, and that turn's `turn/end` produces one
  * `[agent update]` with the final answer. Approval requests inside a followed
  * turn are reported as they happen so the user knows to act in the window.
+ * Each followed session is retained (`voiceAgent` reference source) until the
+ * call ends, so its event window stays live while the user looks elsewhere.
  */
 
-import type { ISessions, SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {
+  ISessions, SessionBinding, SessionEventLikeEntry, SessionFace, SessionReference,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** A voice call following the turns it handed to the agent. */
+    voiceAgent: unknown
+  }
+}
 
 /** Longest final answer forwarded to the voice model, in characters. */
 const MAX_ANSWER_CHARS = 1500
@@ -31,6 +41,7 @@ interface Watch {
 
 /** Per-session event-window follower shared by all watches on that session. */
 interface Follower {
+  readonly session: SessionFace
   readonly watches: Watch[]
   lastSeq: number
   lastTurn: number | undefined
@@ -48,11 +59,13 @@ export class HarnessBridge {
 
   /**
    * @param sessions - the client sessions service.
+   * @param currentSession - the session the call controls (the one the mic button belongs to).
    * @param report - sends one `[agent update]` text to the voice model.
    * @param onActivity - receives agent activity changes for the dock.
    */
   constructor(
     private readonly sessions: ISessions,
+    private readonly currentSession: () => SessionId | undefined,
     private readonly report: (text: string) => void,
     private readonly onActivity: (activity: AgentActivity) => void,
   ) {}
@@ -73,7 +86,7 @@ export class HarnessBridge {
         case 'stop_harness':
           return await this.stop()
         case 'harness_status':
-          return this.status()
+          return await this.status()
         default:
           return { status: 'error', error: `Unknown tool ${name}` }
       }
@@ -89,12 +102,11 @@ export class HarnessBridge {
   }
 
   private async ask(task: string): Promise<Record<string, unknown>> {
-    const session = await this.currentSession(true)
-    const wasRunning = session.getSnapshot().running
+    const follower = await this.follow()
+    const wasRunning = follower.session.getSnapshot().running
     // The watch exists before the prompt is sent: the prompt's `user/message`
     // and `turn/start` can be published before the prompt call resolves.
-    const follower = this.follow(session.sessionId)
-    await this.submit(session, task, 'queue', (requestId) => {
+    await this.submit(follower, task, 'queue', (requestId) => {
       follower.watches.push({ task, requestId, turn: undefined, tools: [], answer: '', silenced: false })
     })
     this.onActivity('working')
@@ -107,31 +119,27 @@ export class HarnessBridge {
   }
 
   private async steer(message: string): Promise<Record<string, unknown>> {
-    const session = await this.currentSession(false)
-    if (!session.getSnapshot().running) return this.ask(message)
-    await this.submit(session, message, 'steer')
+    const follower = await this.follow()
+    if (!follower.session.getSnapshot().running) return this.ask(message)
+    await this.submit(follower, message, 'steer')
     return { status: 'sent', note: 'The correction was delivered to the running task.' }
   }
 
   private async stop(): Promise<Record<string, unknown>> {
-    const session = await this.currentSession(false)
-    if (!session.getSnapshot().running) return { status: 'idle', note: 'The agent was not working.' }
-    for (const watch of this.followers.get(session.sessionId)?.watches ?? []) watch.silenced = true
-    const result = await session.cancel()
+    const follower = await this.follow()
+    if (!follower.session.getSnapshot().running) return { status: 'idle', note: 'The agent was not working.' }
+    for (const watch of follower.watches) watch.silenced = true
+    const result = await follower.session.cancel()
     if (!result.ok) return { status: 'error', error: result.error.message }
     return { status: 'stopped' }
   }
 
-  private status(): Record<string, unknown> {
-    const id = this.sessions.list.getSnapshot().current
-    const session = id === undefined ? undefined : this.sessions.binding(id)?.session
-    if (session === undefined) return { status: 'no-session', note: 'No conversation is open.' }
-    const snapshot = session.getSnapshot()
-    const watches = this.followers.get(session.sessionId)?.watches ?? []
-    const active = watches.at(-1)
+  private async status(): Promise<Record<string, unknown>> {
+    const follower = await this.follow()
+    const snapshot = follower.session.getSnapshot()
+    const active = follower.watches.at(-1)
     return {
       status: snapshot.running ? 'working' : 'idle',
-      queuedTasks: snapshot.queue.length,
       ...active === undefined ? {} : {
         currentTask: active.task,
         recentTools: active.tools.slice(-8),
@@ -142,77 +150,84 @@ export class HarnessBridge {
   }
 
   /**
-   * Resolve the session the user is viewing.
-   * @param create - start a new session when none is open.
-   * @returns its face.
-   * @throws when no session is open and `create` is false.
-   */
-  private async currentSession(create: boolean): Promise<SessionFace> {
-    let id = this.sessions.list.getSnapshot().current
-    if (id === undefined) {
-      if (!create) throw new Error('No conversation is open.')
-      id = await this.sessions.create()
-      this.sessions.open(id)
-    }
-    const binding = this.sessions.binding(id)
-    if (binding === undefined) throw new Error('The open conversation is not available yet.')
-    return binding.session
-  }
-
-  /**
    * Send one prompt through the composer's submission path.
-   * @param session - target session.
+   * @param follower - follower of the target session.
    * @param text - prompt text.
    * @param mode - queue a new turn or steer the running one.
    * @param beforeSend - receives the request id before the prompt is sent.
    * @throws when the Host rejects the prompt.
    */
   private async submit(
-    session: SessionFace,
+    follower: Follower,
     text: string,
     mode: 'queue' | 'steer',
     beforeSend?: (requestId: string) => void,
   ): Promise<void> {
-    const submission = session.beginSubmission({ mode, text, images: [] })
+    const submission = follower.session.beginSubmission({ mode, text, attachments: [] })
     beforeSend?.(submission.requestId)
-    const result = await session.prompt([{ type: 'text', text }], mode, undefined, submission.requestId)
+    const result = await follower.session.prompt([{ type: 'text', text }], mode, undefined, submission.requestId)
     if (!result.ok) {
-      this.forget(session.sessionId, submission.requestId)
+      const index = follower.watches.findIndex(watch => watch.requestId === submission.requestId)
+      if (index !== -1) follower.watches.splice(index, 1)
       throw new Error(result.error.message)
     }
   }
 
-  private forget(sessionId: SessionId, requestId: string): void {
-    const follower = this.followers.get(sessionId)
-    if (follower === undefined) return
-    const index = follower.watches.findIndex(watch => watch.requestId === requestId)
-    if (index !== -1) follower.watches.splice(index, 1)
-  }
-
-  private follow(sessionId: SessionId): Follower {
+  /**
+   * Follow the session the call controls, retaining it on first use.
+   * @returns its follower.
+   * @throws when no conversation is open.
+   */
+  private async follow(): Promise<Follower> {
+    const sessionId = this.currentSession()
+    if (sessionId === undefined) throw new Error('No conversation is open. Ask the user to open or start one.')
     const existing = this.followers.get(sessionId)
     if (existing !== undefined) return existing
-    const binding = this.sessions.binding(sessionId)
-    if (binding === undefined) throw new Error('The conversation closed.')
+    const reference: SessionReference = this.sessions.retain(sessionId, { source: 'voiceAgent' })
+    let binding: SessionBinding
+    try {
+      binding = await reference.ready
+    } catch (error) {
+      reference.release()
+      throw error
+    }
+    const raced = this.followers.get(sessionId)
+    if (raced !== undefined) {
+      reference.release()
+      return raced
+    }
     const source = binding.eventSource
-    const initial = source.getSnapshot().entries
     const follower: Follower = {
+      session: binding.session,
       watches: [],
-      lastSeq: initial.at(-1)?.event.seq ?? -1,
+      lastSeq: lastDurableSeq(source.getSnapshot().entries),
       lastTurn: undefined,
       dispose: () => {},
     }
-    follower.dispose = source.subscribe(() => {
-      const window = source.getSnapshot()
-      const entries = window.change.kind === 'append' ? window.change.entries : window.entries
-      for (const entry of entries) this.observe(follower, entry)
+    const unsubscribe = source.subscribe(() => {
+      const change = source.getSnapshot().change
+      switch (change.kind) {
+        case 'append':
+          for (const entry of change.entries) this.observe(follower, entry)
+          return
+        case 'settle-assistant':
+          if (change.entry !== undefined) this.observe(follower, change.entry)
+          return
+        default:
+          // replace / prepend: rescan the window; already-seen sequence numbers are skipped.
+          for (const entry of source.getSnapshot().entries) this.observe(follower, entry)
+      }
     })
+    follower.dispose = () => {
+      unsubscribe()
+      reference.release()
+    }
     this.followers.set(sessionId, follower)
     return follower
   }
 
   private observe(follower: Follower, entry: SessionEventLikeEntry): void {
-    // Historical chunk rows never belong to a turn started during this call.
+    // Transient live chunks are previews; the settled assistant/message carries the text.
     if (entry.type !== 'event') return
     const event = entry.event
     if (event.seq <= follower.lastSeq) return
@@ -272,6 +287,15 @@ export class HarnessBridge {
     }
     this.report(`[agent update] The agent finished the task "${watch.task}". Tools used: ${tools}. Its final answer:\n${truncate(watch.answer, MAX_ANSWER_CHARS) || '(no text answer)'}`)
   }
+}
+
+/** Highest durable event sequence in a window; transient entries carry no durable seq. */
+function lastDurableSeq(entries: readonly SessionEventLikeEntry[]): number {
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const entry = entries[index]
+    if (entry?.type === 'event') return entry.event.seq
+  }
+  return -1
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {

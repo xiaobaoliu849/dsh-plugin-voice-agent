@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "files": ["src/index.ts", "src/live.ts", "src/settings.ts", "src/tools.ts"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../credentials/credentials" },
+    { "path": "../../host/webserver" }
+  ]
+}

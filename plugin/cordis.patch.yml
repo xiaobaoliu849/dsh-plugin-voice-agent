@@ -1,0 +1,4 @@
+# Voice Agent: talk to the DeepSeek Harness agent through Gemini Live.
+- insert:
+    - id: voice-agent
+      name: dsh-plugin-voice-agent

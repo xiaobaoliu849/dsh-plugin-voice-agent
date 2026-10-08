@@ -1,11 +1,7 @@
 {
-  "name": "dsh-plugin-voice-agent-workspace",
+  "name": "dsh-plugin-voice-agent-repo",
   "private": true,
-  "description": "Realtime voice control for DeepSeek Harness (dsh): talk to the coding agent through Gemini Live",
-  "scripts": {
-    "build": "pnpm --filter \"./packages/**\" run bundle",
-    "dev": "pnpm --filter \"./packages/**\" --parallel run watch"
-  },
+  "description": "Realtime voice control for DeepSeek Harness (dsh). The installable package lives in plugin/; the built tarball in release/.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",

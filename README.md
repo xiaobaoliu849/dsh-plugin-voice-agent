@@ -2,7 +2,7 @@
 
 [中文文档](README.zh.md) | English
 
-Talk to the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) coding agent by voice, the way Codex realtime works: a Gemini Live voice model listens and talks, and the harness agent does the actual work in your project.
+Talk to the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) coding agent by voice, the way Codex realtime works: a Gemini Live voice model listens and talks, and the harness agent does the actual work in your project. Works in the **DeepSeek Harness desktop app**.
 
 ```
 You speak ─▶ Gemini Live (voice) ──tool call──▶ DeepSeek Harness agent (files, shell, code)
@@ -23,32 +23,24 @@ Unlike the [Echo plugin](https://github.com/xiaobaoliu849/dsh-plugin-voicespirit
 
 When the agent needs approval for a tool, the voice tells you to approve or deny it in the window. Small talk is answered by the voice model itself.
 
-## Packages
+## Install into the desktop app
 
-| Package | Role |
-|---|---|
-| `packages/host` → `@deepseek-ai/dsh-host-voice-agent` | `voice-agent` settings namespace; `GET /api/voice-agent/status`; `WS /api/voice-agent/ws`, which relays one call to Gemini Live. The API key is resolved from the harness credentials store and never reaches the browser. Upgrades from other origins are rejected. |
-| `packages/client-ui` → `@deepseek-ai/dsh-client-ui-voice-agent` | Composer mic button, call dock (status, level meter, transcript, mute, hang up), Settings → Plugins card, and the bridge that runs the voice tools against the open session through `ctx.sessions`. |
+Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
 
-## Install (harness source checkout)
-
-Tested with DeepSeek Harness `0.1.2-alpha.4`.
-
-1. Copy `packages/host` to `packages/host/voice-agent` and `packages/client-ui` to `packages/client/ui-voice-agent` in the harness workspace.
-2. Add both packages to `packages/bundle/web-app/package.json` dependencies (`"workspace:^"`) and insert them in `packages/bundle/web-app/cordis.patch.yml`:
-   ```yaml
-       - id: host-voice-agent
-         name: '@deepseek-ai/dsh-host-voice-agent'
-
-       - id: ui-voice-agent
-         name: '@deepseek-ai/dsh-client-ui-voice-agent'
+1. Quit the desktop app.
+2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
+   ```powershell
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.0.tgz
    ```
-3. Add `{ "path": "./packages/host/voice-agent" }` to `tsconfig.host.json` and `{ "path": "./packages/client/ui-voice-agent" }` to `tsconfig.client.json`.
-4. Run `pnpm install`, then build with `pnpm run build:lib`, or build only these packages with `npx tsdown --env.DSH_BUILD_FACE host --filter @deepseek-ai/dsh-host-voice-agent` and `pnpm --filter @deepseek-ai/dsh-client-ui-voice-agent run bundle`.
-5. Run `pnpm dsh web`, open **Settings → Plugins → Plugin configuration → Voice Agent (Gemini Live)** and save your Gemini API key (or set the `GEMINI_API_KEY` environment variable).
-6. Open a workspace, click the mic button in the composer, and talk.
+   A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
+3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and save your Gemini API key (stored as `GEMINI_API_KEY` in the harness credentials store). A key already present in `~/.dsh/.credentials.yaml` or the `GEMINI_API_KEY` environment variable is used as is.
+4. Open a conversation, click the mic button in the composer, and talk.
+
+To remove it, use **Uninstall** on the plugin's page, or `dsh.cmd plugin --profile desktop remove dsh-plugin-voice-agent`.
 
 ## Settings
+
+Edited on the plugin's page; changes apply to the next call without a restart.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -57,10 +49,31 @@ Tested with DeepSeek Harness `0.1.2-alpha.4`.
 | `apiKeyEnv` | `GEMINI_API_KEY` | Credential reference holding the API key |
 | `instructions` | empty | Extra text appended to the voice model's system prompt, e.g. "Always answer in Chinese." |
 
+## How it works
+
+`dsh-plugin-voice-agent` is one package with three roles:
+
+- **Bundle**: `cordis.patch.yml` inserts one profile entry, `voice-agent`.
+- **Host half** (`src/index.ts`, `src/live.ts`): serves `GET /api/voice-agent/status` and `WS /api/voice-agent/ws`, which relays each call to Gemini Live with session resumption. The API key is resolved from the harness credentials store and never reaches the browser; upgrades from other origins are rejected.
+- **Browser half** (`src/client`): the composer mic button, the call dock (status, level meter, transcript, mute, hang up), the settings page in the `plugins.bundle.config` slot, and the bridge that runs the voice tools against the open session through `ctx.sessions` (prompt, cancel, and the session event window).
+
+Harness packages (`@deepseek-ai/cordis`, `@deepseek-ai/schemastery`, `@deepseek-ai/dsh-credentials`) are peer dependencies resolved from the desktop installation; the only installed dependency is `ws`.
+
+## Build from source
+
+The package builds inside a DeepSeek Harness checkout of the matching release, because its tsconfig and tsdown files reference the monorepo build presets.
+
+1. Check out `deepseek-ai/deepseek-harness` at tag `dsh-v0.2.0-rc.2`, run `pnpm install`, then `pnpm run build:lib:host`.
+2. Copy `plugin/` to `packages/client/voice-agent-plugin` in that checkout and run `pnpm install` again.
+3. Type-check and build: `node ./node_modules/typescript/bin/tsc -b packages/client/voice-agent-plugin/tsconfig.json`, then `pnpm --filter dsh-plugin-voice-agent run bundle`.
+4. Pack: `pnpm --filter dsh-plugin-voice-agent pack`.
+
+The `v0.1.0` tag holds the earlier version for source checkouts of dsh `0.1.2-alpha.4` (two packages wired into the web-app bundle).
+
 ## Known limitations
 
 - Long tasks: the voice stays quiet until the agent's turn ends; there are no spoken progress updates yet.
-- The installed desktop app (dsh `0.2.0-rc.2`) is not supported yet.
+- The call controls the conversation whose composer it was started from; with no conversation open, the voice asks you to open one.
 - No unit tests yet.
 
 ## License

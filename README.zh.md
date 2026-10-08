@@ -30,7 +30,7 @@
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.3.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.4.tgz
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
 3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，保存 Gemini API Key（以 `GEMINI_API_KEY` 存入 harness 凭据存储）。如果 `~/.dsh/.credentials.yaml` 或环境变量 `GEMINI_API_KEY` 里已有 key，会直接使用。
@@ -48,6 +48,8 @@
 | `voice` | `Puck` | Gemini 预置音色 |
 | `apiKeyEnv` | `GEMINI_API_KEY` | 保存 API Key 的凭据引用 |
 | `instructions` | 空 | 追加到语音模型系统提示的文字，例如“始终用中文回答”。 |
+| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | Gemini 每百万输入 token 的美元单价，用于通话面板中的费用估算 |
+| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | Gemini 每百万输出 token 的美元单价（文本输出包含思考 token） |
 
 ## 工作原理
 
@@ -79,7 +81,8 @@ harness 自身的包（`@deepseek-ai/cordis`、`@deepseek-ai/schemastery`、`@de
 ## 已知限制
 
 - 长任务：智能体这一轮结束前语音不会播报进度。
-- 费用：Gemini Live 按音频时长计费，所以插件只在说话前后发送麦克风音频，并在停顿时通知 Gemini；通话开着但没人说话时不发送任何音频。编程智能体本身的 token 用量由你的 DeepSeek 模型服务商另行计费。
+- 费用：Gemini Live 按音频时长计费，所以插件只在说话前后发送麦克风音频，并在停顿时通知 Gemini；通话开着但没人说话时不发送任何音频。通话面板会显示本次通话的 Gemini token 数和估算费用（鼠标悬停可查看各类明细）。Gemini 每一轮都会重新处理整个对话上下文，所以通话越长，每轮越贵。编程智能体本身的 token 用量由你的 DeepSeek 模型服务商另行计费。
+- 你的请求会尽量按原话交给智能体，不会被添加额外目标：任务被扩大会让智能体做更多工作，也会花更多钱。
 - 通话控制的是发起通话时所在的会话；没有打开会话时，语音会请你先打开一个。
 - 还没有单元测试。
 

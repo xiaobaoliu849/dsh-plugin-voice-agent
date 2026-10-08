@@ -30,6 +30,14 @@ export interface VoiceAgentSettings {
   apiKeyEnv: string
   /** Extra instructions appended to the built-in voice prompt (e.g. "Always answer in Chinese"). */
   instructions: string
+  /** USD per million audio input tokens, for the per-call cost estimate. */
+  priceAudioInput: number
+  /** USD per million text input tokens (prompt, tool results, agent updates). */
+  priceTextInput: number
+  /** USD per million audio output tokens. */
+  priceAudioOutput: number
+  /** USD per million text output and thinking tokens. */
+  priceTextOutput: number
 }
 
 /** Live references to the volatile fields of {@link VoiceAgentSettings}. */
@@ -41,4 +49,8 @@ export const Config = z.object({
   voice: z.string().default('Puck').volatile(),
   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV).volatile(),
   instructions: z.string().default('').volatile(),
+  priceAudioInput: z.number().min(0).default(3).volatile(),
+  priceTextInput: z.number().min(0).default(0.75).volatile(),
+  priceAudioOutput: z.number().min(0).default(4.5).volatile(),
+  priceTextOutput: z.number().min(0).default(4.5).volatile(),
 })

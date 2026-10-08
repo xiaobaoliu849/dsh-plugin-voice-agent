@@ -48,6 +48,32 @@ export type HostMessage =
   | { type: 'tool_cancel'; ids: string[] }
   | { type: 'reconnecting' }
   | { type: 'error'; message: string }
+  /** Running totals for this call, sent after every model turn that reports usage. */
+  | { type: 'usage'; usage: CallUsage }
+
+/** USD per million tokens, by direction and modality. */
+export interface TokenPrices {
+  audioInput: number
+  textInput: number
+  audioOutput: number
+  /** Also applied to thinking tokens. */
+  textOutput: number
+}
+
+/**
+ * Token and cost totals for one call. Gemini Live reports usage per model
+ * turn, and each turn's prompt count covers the whole context window that turn
+ * re-processed, so the call's billed tokens are the sum over turns.
+ */
+export interface CallUsage {
+  audioInputTokens: number
+  textInputTokens: number
+  audioOutputTokens: number
+  /** Text output plus thinking tokens. */
+  textOutputTokens: number
+  /** Estimated cost in USD at the configured prices; cached-context discounts are not applied. */
+  costUsd: number
+}
 
 /** Everything one call needs to open its Gemini Live session. */
 export interface LiveCallOptions {
@@ -58,6 +84,7 @@ export interface LiveCallOptions {
   instructions: string
   /** Gemini function declarations offered to the voice model. */
   functionDeclarations: readonly object[]
+  prices: TokenPrices
   logger: Context['logger']
 }
 
@@ -76,6 +103,17 @@ interface LiveServerMessage {
   goAway?: { timeLeft?: string }
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean }
   error?: { message?: string }
+  usageMetadata?: UsageMetadata
+}
+
+/** Gemini usage report for one model turn. */
+interface UsageMetadata {
+  promptTokenCount?: number
+  responseTokenCount?: number
+  thoughtsTokenCount?: number
+  toolUsePromptTokenCount?: number
+  promptTokensDetails?: Array<{ modality?: string; tokenCount?: number }>
+  responseTokensDetails?: Array<{ modality?: string; tokenCount?: number }>
 }
 
 /**
@@ -94,6 +132,7 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
   /** Control frames the browser sent while (re)connecting; audio is dropped instead of queued. */
   const pending: string[] = []
   let ready = false
+  const usage: CallUsage = { audioInputTokens: 0, textInputTokens: 0, audioOutputTokens: 0, textOutputTokens: 0, costUsd: 0 }
 
   const toBrowser = (message: HostMessage): void => {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message))
@@ -158,6 +197,11 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
   }
 
   const handleServerMessage = (socket: WebSocket, message: LiveServerMessage): void => {
+    // Usage rides on other messages (with serverContent), so it is read before any early return.
+    if (message.usageMetadata !== undefined) {
+      addUsage(usage, message.usageMetadata, options.prices)
+      toBrowser({ type: 'usage', usage: { ...usage } })
+    }
     if (message.setupComplete !== undefined) {
       ready = true
       resumeAttempts = 0
@@ -291,4 +335,34 @@ function rawBuffer(data: RawData): Buffer {
  */
 function rawText(data: RawData): string {
   return rawBuffer(data).toString('utf-8')
+}
+
+/**
+ * Add one turn's usage to the call totals. Prompt tokens not reported as audio
+ * (text, tool results, tool-use prompt) are priced as text input; response
+ * tokens not reported as audio, plus thinking tokens, as text output.
+ * @param total - running call totals, updated in place.
+ * @param turn - Gemini's usage report for one model turn.
+ * @param prices - USD per million tokens.
+ */
+function addUsage(total: CallUsage, turn: UsageMetadata, prices: TokenPrices): void {
+  const audioIn = modalityTokens(turn.promptTokensDetails, 'AUDIO')
+  const textIn = Math.max(0, (turn.promptTokenCount ?? 0) - audioIn) + (turn.toolUsePromptTokenCount ?? 0)
+  const audioOut = modalityTokens(turn.responseTokensDetails, 'AUDIO')
+  const textOut = Math.max(0, (turn.responseTokenCount ?? 0) - audioOut) + (turn.thoughtsTokenCount ?? 0)
+  total.audioInputTokens += audioIn
+  total.textInputTokens += textIn
+  total.audioOutputTokens += audioOut
+  total.textOutputTokens += textOut
+  total.costUsd += (audioIn * prices.audioInput + textIn * prices.textInput
+    + audioOut * prices.audioOutput + textOut * prices.textOutput) / 1_000_000
+}
+
+/**
+ * @param details - per-modality token counts.
+ * @param modality - modality name as Gemini reports it.
+ * @returns the tokens reported for that modality.
+ */
+function modalityTokens(details: UsageMetadata['promptTokensDetails'], modality: string): number {
+  return (details ?? []).filter(entry => entry.modality === modality).reduce((sum, entry) => sum + (entry.tokenCount ?? 0), 0)
 }

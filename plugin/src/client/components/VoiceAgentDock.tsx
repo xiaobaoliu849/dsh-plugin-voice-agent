@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { TranscriptLine, VoiceAgentController, VoiceAgentState } from '../controller.ts'
+import type { CallUsage, TranscriptLine, VoiceAgentController, VoiceAgentState } from '../controller.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { VoiceAgentKey } from '../locales.ts'
 import styles from './VoiceAgent.module.css'
@@ -56,6 +56,31 @@ function lineText(line: TranscriptLine, t: (key: VoiceAgentKey) => string): stri
   return `${t(NOTICE_KEY[kind])}${short}`
 }
 
+/** @returns all tokens counted for the call. */
+function totalTokens(usage: CallUsage): number {
+  return usage.audioInputTokens + usage.textInputTokens + usage.audioOutputTokens + usage.textOutputTokens
+}
+
+/** @returns a compact token count such as `850 tok` or `12.4K tok`. */
+function formatTokens(tokens: number): string {
+  return tokens < 1000 ? `${String(tokens)} tok` : `${(tokens / 1000).toFixed(1)}K tok`
+}
+
+/** @returns USD with enough digits that sub-cent calls are not shown as zero. */
+function formatCost(usd: number): string {
+  return usd < 0.01 ? usd.toFixed(4) : usd.toFixed(3)
+}
+
+/** @returns the per-modality breakdown shown in the tooltip. */
+function usageDetail(usage: CallUsage, t: (key: VoiceAgentKey) => string): string {
+  return [
+    `${t('usageAudioIn')} ${String(usage.audioInputTokens)}`,
+    `${t('usageTextIn')} ${String(usage.textInputTokens)}`,
+    `${t('usageAudioOut')} ${String(usage.audioOutputTokens)}`,
+    `${t('usageTextOut')} ${String(usage.textOutputTokens)}`,
+  ].join(' · ')
+}
+
 /** Bars in the level meter; the first half shows the mic, the second the speaker. */
 const BARS = 6
 
@@ -90,6 +115,12 @@ export function VoiceAgentDock({ controller, t, sessionId }: VoiceAgentDockProps
         <span className={`${styles.status} ${isError ? styles.statusError : ''}`} role="status">
           {isError && state.error !== null ? `${t('phaseError')}: ${state.error}` : t(PHASE_KEY[state.phase])}
         </span>
+        {state.usage !== null && (
+          <span className={styles.usage} title={`${t('usageTitle')}
+${usageDetail(state.usage, t)}`}>
+            {formatTokens(totalTokens(state.usage))} · ${formatCost(state.usage.costUsd)}
+          </span>
+        )}
         {state.activity !== 'idle' && (
           <span className={`${styles.badge} ${state.activity === 'approval' ? styles.badgeApproval : ''}`}>
             {state.activity === 'approval' ? t('activityApproval') : t('activityWorking')}

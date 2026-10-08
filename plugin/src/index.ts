@@ -42,6 +42,10 @@ export function apply(ctx: Context, config: Config): void {
     voice: config.voice.get(),
     apiKeyEnv: config.apiKeyEnv.get(),
     instructions: config.instructions.get(),
+    priceAudioInput: config.priceAudioInput.get(),
+    priceTextInput: config.priceTextInput.get(),
+    priceAudioOutput: config.priceAudioOutput.get(),
+    priceTextOutput: config.priceTextOutput.get(),
   })
 
   const resolveApiKey = async (): Promise<string | undefined> => {
@@ -111,6 +115,12 @@ export function apply(ctx: Context, config: Config): void {
             voice: current.voice,
             instructions: buildInstructions(current.instructions),
             functionDeclarations: FUNCTION_DECLARATIONS,
+            prices: {
+              audioInput: current.priceAudioInput,
+              textInput: current.priceTextInput,
+              audioOutput: current.priceAudioOutput,
+              textOutput: current.priceTextOutput,
+            },
             logger: ctx.logger,
           })
         }, (error: unknown) => {

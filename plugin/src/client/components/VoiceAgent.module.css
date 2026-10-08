@@ -89,6 +89,14 @@
   white-space: normal;
 }
 
+.usage {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
 .badge {
   flex: none;
   font-size: 12px;

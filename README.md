@@ -30,7 +30,7 @@ Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
 1. Quit the desktop app.
 2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.3.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.4.tgz
    ```
    A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
 3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and save your Gemini API key (stored as `GEMINI_API_KEY` in the harness credentials store). A key already present in `~/.dsh/.credentials.yaml` or the `GEMINI_API_KEY` environment variable is used as is.
@@ -48,6 +48,8 @@ Edited on the plugin's page; changes apply to the next call without a restart.
 | `voice` | `Puck` | Prebuilt Gemini voice |
 | `apiKeyEnv` | `GEMINI_API_KEY` | Credential reference holding the API key |
 | `instructions` | empty | Extra text appended to the voice model's system prompt, e.g. "Always answer in Chinese." |
+| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | USD per million Gemini input tokens, for the cost shown in the call dock |
+| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | USD per million Gemini output tokens (text output includes thinking tokens) |
 
 ## How it works
 
@@ -79,7 +81,8 @@ The `v0.1.0` tag holds the earlier version for source checkouts of dsh `0.1.2-al
 ## Known limitations
 
 - Long tasks: the voice stays quiet until the agent's turn ends; there are no spoken progress updates yet.
-- Cost: Gemini Live bills audio by duration, so the plugin sends microphone audio only around speech and tells Gemini when the stream pauses; an open but silent call sends nothing. The coding agent's own token usage is billed separately by your DeepSeek model provider.
+- Cost: Gemini Live bills audio by duration, so the plugin sends microphone audio only around speech and tells Gemini when the stream pauses; an open but silent call sends nothing. The call dock shows the call's Gemini tokens and estimated cost (hover for the per-modality breakdown). Each Gemini turn re-processes the whole conversation context, so long calls cost more per turn. The coding agent's own token usage is billed separately by your DeepSeek model provider.
+- Requests are passed to the agent close to your own words, without added goals: a broadened task makes the agent do (and bill for) more work.
 - The call controls the conversation whose composer it was started from; with no conversation open, the voice asks you to open one.
 - No unit tests yet.
 

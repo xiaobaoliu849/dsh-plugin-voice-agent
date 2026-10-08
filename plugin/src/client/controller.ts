@@ -46,6 +46,18 @@ export interface VoiceAgentState {
   readonly lines: readonly TranscriptLine[]
   /** Raw error text from the host, the browser, or Gemini; shown verbatim. */
   readonly error: string | null
+  /** Gemini token and cost totals for this call; null until the first model turn reports usage. */
+  readonly usage: CallUsage | null
+}
+
+/** Gemini usage totals for one call (mirrors the host package's CallUsage). */
+export interface CallUsage {
+  readonly audioInputTokens: number
+  readonly textInputTokens: number
+  readonly audioOutputTokens: number
+  readonly textOutputTokens: number
+  /** Estimated USD at the configured prices. */
+  readonly costUsd: number
 }
 
 /** Host → browser control messages (mirrors the host package's HostMessage). */
@@ -59,8 +71,9 @@ type HostMessage =
   | { type: 'tool_cancel'; ids: string[] }
   | { type: 'reconnecting' }
   | { type: 'error'; message: string }
+  | { type: 'usage'; usage: CallUsage }
 
-const IDLE: VoiceAgentState = { phase: 'idle', muted: false, activity: 'idle', lines: [], error: null }
+const IDLE: VoiceAgentState = { phase: 'idle', muted: false, activity: 'idle', lines: [], error: null, usage: null }
 
 /** Owns at most one call at a time. */
 export class VoiceAgentController {
@@ -205,6 +218,9 @@ export class VoiceAgentController {
         return
       case 'error':
         this.set({ ...this.state, error: message.message })
+        return
+      case 'usage':
+        this.set({ ...this.state, usage: message.usage })
         return
       default:
         message satisfies never

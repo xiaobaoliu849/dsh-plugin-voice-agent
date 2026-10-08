@@ -30,7 +30,7 @@ Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
 1. Quit the desktop app.
 2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.0.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.1.tgz
    ```
    A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
 3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and save your Gemini API key (stored as `GEMINI_API_KEY` in the harness credentials store). A key already present in `~/.dsh/.credentials.yaml` or the `GEMINI_API_KEY` environment variable is used as is.

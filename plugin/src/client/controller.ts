@@ -13,6 +13,20 @@ import { HarnessBridge, type AgentActivity } from './bridge.ts'
 /** Host route the call WebSocket upgrades on. */
 const CALL_PATH = '/api/voice-agent/ws'
 
+/**
+ * The call WebSocket URL. A page served by the Host resolves the route against
+ * its own document; the desktop app serves the page from `dsh-app://app` and
+ * names its Host's HTTP origin in `__DSH_TRANSPORT__.streamBaseUrl`, the same
+ * base the harness Gateway uses for its own WebSocket.
+ * @returns the absolute `ws:`/`wss:` URL of the call route.
+ */
+function callUrl(): string {
+  const globals = globalThis as { __DSH_TRANSPORT__?: { streamBaseUrl?: string } }
+  const url = new URL(CALL_PATH.slice(1), globals.__DSH_TRANSPORT__?.streamBaseUrl ?? document.baseURI)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.href
+}
+
 /** Lines kept in the dock transcript. */
 const MAX_LINES = 8
 
@@ -102,8 +116,7 @@ export class VoiceAgentController {
       (text) => { this.sendUpdate(text) },
       (activity) => { this.set({ ...this.state, activity }) },
     )
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${scheme}://${window.location.host}${CALL_PATH}`)
+    const socket = new WebSocket(callUrl())
     socket.binaryType = 'arraybuffer'
     this.socket = socket
     socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {

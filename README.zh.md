@@ -30,7 +30,7 @@
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.0.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.1.tgz
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
 3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，保存 Gemini API Key（以 `GEMINI_API_KEY` 存入 harness 凭据存储）。如果 `~/.dsh/.credentials.yaml` 或环境变量 `GEMINI_API_KEY` 里已有 key，会直接使用。

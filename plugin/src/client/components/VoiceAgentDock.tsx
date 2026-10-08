@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { VoiceAgentController, VoiceAgentState } from '../controller.ts'
+import type { TranscriptLine, VoiceAgentController, VoiceAgentState } from '../controller.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { VoiceAgentKey } from '../locales.ts'
 import styles from './VoiceAgent.module.css'
@@ -29,6 +29,31 @@ const SPEAKER_KEY: Record<'user' | 'assistant' | 'agent', VoiceAgentKey> = {
   user: 'speakerUser',
   assistant: 'speakerAssistant',
   agent: 'speakerAgent',
+}
+
+const NOTICE_KEY = {
+  finished: 'noticeFinished',
+  cancelled: 'noticeCancelled',
+  failed: 'noticeFailed',
+  approval: 'noticeApproval',
+} as const satisfies Record<string, VoiceAgentKey>
+
+/** Longest task text a notice line shows. */
+const MAX_NOTICE_DETAIL = 80
+
+/**
+ * Text of one transcript line; agent notices stay one short line, since the
+ * full answer is in the conversation and the voice speaks its summary.
+ * @param line - transcript line.
+ * @param t - locale lookup.
+ * @returns the line text.
+ */
+function lineText(line: TranscriptLine, t: (key: VoiceAgentKey) => string): string {
+  if (line.role !== 'agent') return line.text
+  const { kind, detail } = line.notice
+  if (kind === 'approval') return t(NOTICE_KEY.approval)
+  const short = detail.length <= MAX_NOTICE_DETAIL ? detail : `${detail.slice(0, MAX_NOTICE_DETAIL)}…`
+  return `${t(NOTICE_KEY[kind])}${short}`
 }
 
 /** Bars in the level meter; the first half shows the mic, the second the speaker. */
@@ -106,7 +131,7 @@ export function VoiceAgentDock({ controller, t, sessionId }: VoiceAgentDockProps
             {state.lines.map((line, index) => (
               <li key={index} className={`${styles.line} ${line.role === 'agent' ? styles.lineAgent : ''}`}>
                 <span className={styles.speaker}>{t(SPEAKER_KEY[line.role])}</span>
-                {line.text}
+                {lineText(line, t)}
               </li>
             ))}
           </ul>

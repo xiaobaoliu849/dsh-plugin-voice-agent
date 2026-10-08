@@ -1,13 +1,90 @@
 /**
- * Call audio: microphone capture as 16 kHz mono PCM16 frames, and gapless
- * playback of the model's 24 kHz PCM16 stream with an immediate flush when the
- * user interrupts.
+ * Call audio: microphone capture as 16 kHz mono PCM16 frames, a speech gate
+ * that withholds silent frames, and gapless playback of the model's 24 kHz
+ * PCM16 stream with an immediate flush when the user interrupts.
  */
 
 /** Sample rate Gemini Live expects for input audio. */
 const INPUT_RATE = 16_000
 /** Sample rate of Gemini Live output audio. */
 const OUTPUT_RATE = 24_000
+
+/** Frames (32 ms each) replayed before detected speech so its onset is not clipped. */
+const PREROLL_FRAMES = 10
+/**
+ * Silent frames still sent after speech (~1.5 s). Longer than Gemini's
+ * end-of-speech silence window (800 ms in the setup message), so Gemini sees
+ * the pause that ends the user's turn before the stream stops.
+ */
+const HANGOVER_FRAMES = 47
+/** RMS level below which a frame never counts as speech. */
+const MIN_SPEECH_RMS = 0.012
+
+/**
+ * Sends microphone frames only around speech. Gemini Live bills input audio by
+ * duration, so a call left open while the agent works would otherwise pay for
+ * minutes of silence. Speech is a frame louder than both {@link MIN_SPEECH_RMS}
+ * and three times the tracked noise floor; in a constantly loud room every
+ * frame passes and the gate degrades to continuous streaming.
+ */
+export class SpeechGate {
+  private noiseFloor = 0.004
+  private hangover = 0
+  private streaming = false
+  private readonly preroll: ArrayBuffer[] = []
+
+  /**
+   * @param send - forwards one frame to Gemini.
+   * @param pause - signals that streaming stopped after speech (audio stream end).
+   */
+  constructor(
+    private readonly send: (frame: ArrayBuffer) => void,
+    private readonly pause: () => void,
+  ) {}
+
+  /**
+   * Route one captured frame.
+   * @param frame - mono PCM16 at 16 kHz.
+   */
+  push(frame: ArrayBuffer): void {
+    const level = rms(frame)
+    const speech = level > Math.max(MIN_SPEECH_RMS, this.noiseFloor * 3)
+    if (!speech) this.noiseFloor = this.noiseFloor * 0.98 + level * 0.02
+    if (speech) {
+      if (!this.streaming) {
+        this.streaming = true
+        for (const buffered of this.preroll.splice(0)) this.send(buffered)
+      }
+      this.hangover = HANGOVER_FRAMES
+      this.send(frame)
+      return
+    }
+    if (this.streaming) {
+      this.send(frame)
+      this.hangover -= 1
+      if (this.hangover <= 0) {
+        this.streaming = false
+        this.pause()
+      }
+      return
+    }
+    this.preroll.push(frame)
+    if (this.preroll.length > PREROLL_FRAMES) this.preroll.shift()
+  }
+}
+
+/**
+ * Root-mean-square level of a PCM16 frame.
+ * @param frame - mono PCM16 samples.
+ * @returns the level in [0, 1].
+ */
+function rms(frame: ArrayBuffer): number {
+  const samples = new Int16Array(frame)
+  if (samples.length === 0) return 0
+  let sum = 0
+  for (const sample of samples) sum += (sample / 0x8000) ** 2
+  return Math.sqrt(sum / samples.length)
+}
 
 /**
  * AudioWorklet that downsamples the capture stream to 16 kHz PCM16 and posts

@@ -27,6 +27,8 @@ export type BrowserMessage =
   | { type: 'tool_response'; id: string; name: string; response: Record<string, unknown> }
   | { type: 'agent_update'; text: string }
   | { type: 'text'; text: string }
+  /** The browser paused its microphone stream because the user is silent. */
+  | { type: 'audio_end' }
 
 /** Host → browser control messages (model audio travels as binary PCM16 24 kHz frames). */
 export type HostMessage =
@@ -205,6 +207,13 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
     switch (message.type) {
       case 'tool_response':
         toGemini({ toolResponse: { functionResponses: [{ id: message.id, name: message.name, response: message.response }] } })
+        return
+      case 'audio_end':
+        // Flushes Gemini's buffered audio so its activity detection can close
+        // the turn; a pause sent while reconnecting is meaningless and dropped.
+        if (ready && upstream?.readyState === WebSocket.OPEN) {
+          upstream.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }))
+        }
         return
       case 'agent_update':
       case 'text':

@@ -51,6 +51,12 @@ interface Follower {
 /** What the dock shows about the agent. */
 export type AgentActivity = 'idle' | 'working' | 'approval'
 
+/** The short dock line for one report: what happened, and the task or tool it concerns. */
+export interface AgentNotice {
+  readonly kind: 'finished' | 'cancelled' | 'failed' | 'approval'
+  readonly detail: string
+}
+
 /**
  * Runs harness tools for one call.
  */
@@ -60,13 +66,13 @@ export class HarnessBridge {
   /**
    * @param sessions - the client sessions service.
    * @param currentSession - the session the call controls (the one the mic button belongs to).
-   * @param report - sends one `[agent update]` text to the voice model.
+   * @param report - sends one `[agent update]` text to the voice model, with its dock notice.
    * @param onActivity - receives agent activity changes for the dock.
    */
   constructor(
     private readonly sessions: ISessions,
     private readonly currentSession: () => SessionId | undefined,
-    private readonly report: (text: string) => void,
+    private readonly report: (text: string, notice: AgentNotice) => void,
     private readonly onActivity: (activity: AgentActivity) => void,
   ) {}
 
@@ -261,7 +267,7 @@ export class HarnessBridge {
         if ((event.type as string) === 'approval/asked' && follower.watches.some(watch => watch.turn !== undefined)) {
           const data = (event as { data: { toolName?: string; reason?: string } }).data
           this.onActivity('approval')
-          this.report(`[agent update] The agent is waiting for the user's approval in the window before running the ${data.toolName ?? 'next'} tool${data.reason === undefined ? '' : ` (${data.reason})`}. Ask the user to approve or deny it there.`)
+          this.report(`[agent update] The agent is waiting for the user's approval in the window before running the ${data.toolName ?? 'next'} tool${data.reason === undefined ? '' : ` (${data.reason})`}. Ask the user to approve or deny it there.`, { kind: 'approval', detail: data.toolName ?? '' })
         }
     }
   }
@@ -278,14 +284,14 @@ export class HarnessBridge {
     if (watch === undefined || watch.silenced) return
     const tools = watch.tools.length === 0 ? 'none' : [...new Set(watch.tools)].join(', ')
     if (reason.kind === 'aborted') {
-      this.report(`[agent update] The task "${watch.task}" was cancelled before it finished.`)
+      this.report(`[agent update] The task "${watch.task}" was cancelled before it finished.`, { kind: 'cancelled', detail: watch.task })
       return
     }
     if (reason.kind === 'error') {
-      this.report(`[agent update] The task "${watch.task}" failed: ${reason.error?.message ?? 'unknown error'}.`)
+      this.report(`[agent update] The task "${watch.task}" failed: ${reason.error?.message ?? 'unknown error'}.`, { kind: 'failed', detail: watch.task })
       return
     }
-    this.report(`[agent update] The agent finished the task "${watch.task}". Tools used: ${tools}. Its final answer:\n${truncate(watch.answer, MAX_ANSWER_CHARS) || '(no text answer)'}`)
+    this.report(`[agent update] The agent finished the task "${watch.task}". Tools used: ${tools}. Its final answer:\n${truncate(watch.answer, MAX_ANSWER_CHARS) || '(no text answer)'}`, { kind: 'finished', detail: watch.task })
   }
 }
 

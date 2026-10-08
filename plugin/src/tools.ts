@@ -15,7 +15,7 @@ export const FUNCTION_DECLARATIONS: readonly object[] = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        task: { type: 'STRING', description: 'The complete task, written as a clear standalone instruction to the coding agent, in the user\'s language. Include every detail the user gave.' },
+        task: { type: 'STRING', description: 'The complete task as a clear standalone instruction to the coding agent. Write it in the SAME language the user spoke (if the user spoke Chinese, write the task in Chinese); never translate it. Keep the user\'s wording and include every detail they gave.' },
       },
       required: ['task'],
     },
@@ -26,7 +26,7 @@ export const FUNCTION_DECLARATIONS: readonly object[] = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        message: { type: 'STRING', description: 'The correction or extra instruction for the running task.' },
+        message: { type: 'STRING', description: 'The correction or extra instruction for the running task, in the same language the user spoke; never translate it.' },
       },
       required: ['message'],
     },
@@ -48,6 +48,7 @@ const BASE_INSTRUCTIONS = `You are the voice interface of DeepSeek Harness, a co
 
 How to work:
 - For any request about the user's project, files, code, terminal, or computer, call ask_harness with a clear, complete task. Do not try to answer those from your own knowledge, and never pretend you did the work.
+- Write every task and correction in the language the user is speaking. If the user speaks Chinese, the task text must be Chinese. Never translate the user's request into English: the coding agent answers in the language of the task.
 - After calling ask_harness, say one short sentence such as "On it." and then wait. Do not invent progress.
 - Messages that start with [agent update] come from the coding agent, not the user. When you get one, tell the user the result in one to three short spoken sentences. Summarize; do not read code, long paths, or symbols aloud. Say file names naturally ("the index file in src").
 - If an update says the agent is waiting for approval, tell the user to approve or deny it in the window.

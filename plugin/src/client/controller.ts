@@ -7,8 +7,8 @@
 
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { startMic, SpeechPlayer, type MicCapture } from './audio.ts'
-import { HarnessBridge, type AgentActivity } from './bridge.ts'
+import { SpeechGate, startMic, SpeechPlayer, type MicCapture } from './audio.ts'
+import { HarnessBridge, type AgentActivity, type AgentNotice } from './bridge.ts'
 
 /** Host route the call WebSocket upgrades on. */
 const CALL_PATH = '/api/voice-agent/ws'
@@ -33,11 +33,10 @@ const MAX_LINES = 8
 /** Call connection phase. */
 export type CallPhase = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
-/** One transcript line: the user, the voice model, or an agent report. */
-export interface TranscriptLine {
-  readonly role: 'user' | 'assistant' | 'agent'
-  readonly text: string
-}
+/** One transcript line: speech from the user or the voice model, or a short agent notice. */
+export type TranscriptLine =
+  | { readonly role: 'user' | 'assistant'; readonly text: string }
+  | { readonly role: 'agent'; readonly notice: AgentNotice }
 
 /** Immutable snapshot every voice-agent surface renders. */
 export interface VoiceAgentState {
@@ -113,7 +112,7 @@ export class VoiceAgentController {
     this.bridge = new HarnessBridge(
       this.sessions,
       () => this.sessionId,
-      (text) => { this.sendUpdate(text) },
+      (text, notice) => { this.sendUpdate(text, notice) },
       (activity) => { this.set({ ...this.state, activity }) },
     )
     const socket = new WebSocket(callUrl())
@@ -186,9 +185,11 @@ export class VoiceAgentController {
 
   private async openMic(): Promise<void> {
     try {
-      this.mic = await startMic((frame) => {
-        if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(frame)
-      })
+      const gate = new SpeechGate(
+        (frame) => { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(frame) },
+        () => { this.send({ type: 'audio_end' }) },
+      )
+      this.mic = await startMic((frame) => { gate.push(frame) })
       this.mic.setMuted(this.state.muted)
     } catch (error) {
       this.teardown()
@@ -196,8 +197,8 @@ export class VoiceAgentController {
     }
   }
 
-  private sendUpdate(text: string): void {
-    this.pushLine({ role: 'agent', text: text.replace(/^\[agent update\]\s*/, '') })
+  private sendUpdate(text: string, notice: AgentNotice): void {
+    this.pushLine({ role: 'agent', notice })
     this.send({ type: 'agent_update', text })
   }
 
@@ -208,7 +209,7 @@ export class VoiceAgentController {
   /** Streamed transcript fragments extend the last line while the same speaker continues. */
   private appendText(role: 'user' | 'assistant', fragment: string): void {
     const last = this.state.lines.at(-1)
-    if (last?.role === role) {
+    if (last !== undefined && last.role === role && 'text' in last) {
       const lines = [...this.state.lines.slice(0, -1), { role, text: last.text + fragment }]
       this.set({ ...this.state, lines })
       return

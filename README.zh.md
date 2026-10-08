@@ -30,7 +30,7 @@
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.1.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.2.tgz
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
 3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，保存 Gemini API Key（以 `GEMINI_API_KEY` 存入 harness 凭据存储）。如果 `~/.dsh/.credentials.yaml` 或环境变量 `GEMINI_API_KEY` 里已有 key，会直接使用。
@@ -73,6 +73,7 @@ harness 自身的包（`@deepseek-ai/cordis`、`@deepseek-ai/schemastery`、`@de
 ## 已知限制
 
 - 长任务：智能体这一轮结束前语音不会播报进度。
+- 费用：Gemini Live 按音频时长计费，所以插件只在说话前后发送麦克风音频，并在停顿时通知 Gemini；通话开着但没人说话时不发送任何音频。编程智能体本身的 token 用量由你的 DeepSeek 模型服务商另行计费。
 - 通话控制的是发起通话时所在的会话；没有打开会话时，语音会请你先打开一个。
 - 还没有单元测试。
 

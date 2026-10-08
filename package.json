@@ -1,0 +1,19 @@
+{
+  "name": "dsh-plugin-voice-agent-workspace",
+  "private": true,
+  "description": "Realtime voice control for DeepSeek Harness (dsh): talk to the coding agent through Gemini Live",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/**\" run bundle",
+    "dev": "pnpm --filter \"./packages/**\" --parallel run watch"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "gemini-live",
+    "voice-agent",
+    "realtime-voice",
+    "cordis"
+  ],
+  "license": "MIT"
+}

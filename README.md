@@ -30,7 +30,7 @@ Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
 1. Quit the desktop app.
 2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.2.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.3.tgz
    ```
    A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
 3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and save your Gemini API key (stored as `GEMINI_API_KEY` in the harness credentials store). A key already present in `~/.dsh/.credentials.yaml` or the `GEMINI_API_KEY` environment variable is used as is.
@@ -58,6 +58,12 @@ Edited on the plugin's page; changes apply to the next call without a restart.
 - **Browser half** (`src/client`): the composer mic button, the call dock (status, level meter, transcript, mute, hang up), the settings page in the `plugins.bundle.config` slot, and the bridge that runs the voice tools against the open session through `ctx.sessions` (prompt, cancel, and the session event window).
 
 Harness packages (`@deepseek-ai/cordis`, `@deepseek-ai/schemastery`, `@deepseek-ai/dsh-credentials`) are peer dependencies resolved from the desktop installation; the only installed dependency is `ws`.
+
+## Security
+
+- The call routes accept only loopback `Host` headers and same-origin browser requests, the same fence the harness API uses, so other websites (including DNS-rebinding pages) cannot open calls on your Gemini key.
+- The agent's answers can quote files and web pages. They reach the voice model marked as data, and `ask_harness` / `steer_harness` are refused unless you spoke since the last agent update, so text inside a file cannot start or redirect agent work by itself.
+- The coding agent still runs under the harness permission mode you selected; approval prompts appear in the window as usual.
 
 ## Build from source
 

@@ -55,7 +55,12 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: `${VOICE_AGENT_API_PATH}/status`,
-    handler: async (_req: IncomingMessage, res: ServerResponse) => {
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      if (!isTrustedRequest(req)) {
+        res.writeHead(403)
+        res.end()
+        return
+      }
       const current = settings()
       const body = JSON.stringify({
         ok: true,
@@ -70,19 +75,27 @@ export function apply(ctx: Context, config: Config): void {
   }), 'host-voice-agent: status route')
 
   const sockets = new WebSocketServer({ noServer: true })
-  ctx.effect(() => () => { sockets.close() }, 'host-voice-agent: socket server')
+  // ws does not close accepted clients on server close; ending them here also
+  // ends their Gemini sessions when the plugin is disabled or reloaded.
+  ctx.effect(() => () => {
+    for (const client of sockets.clients) client.terminate()
+    sockets.close()
+  }, 'host-voice-agent: socket server')
 
   ctx.effect(() => ctx.webServer.registerUpgrade({
     path: `${VOICE_AGENT_API_PATH}/ws`,
     handler: (req, socket, head) => {
       // WebSockets are exempt from CORS: without this check any web page the
       // user visits could open a call on their Gemini key.
-      if (!isSameOrigin(req)) {
+      if (!isTrustedRequest(req)) {
         socket.end('HTTP/1.1 403 Forbidden\r\n\r\n')
         return
       }
       sockets.handleUpgrade(req, socket, head, (client) => {
         void resolveApiKey().then((apiKey) => {
+          // The browser can hang up during the credential lookup; a Gemini
+          // session opened for a closed socket would never be closed.
+          if (client.readyState !== client.OPEN) return
           const current = settings()
           if (apiKey === undefined) {
             client.send(JSON.stringify({
@@ -110,18 +123,43 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /**
- * Whether an upgrade request comes from a page served by this host. Requests
- * without an Origin header (non-browser local clients) are accepted.
- * @param req - the upgrade request.
- * @returns true when the Origin host matches the Host header.
+ * Whether a request may use this plugin's routes, following the harness API
+ * trust fence. The Host must be a loopback authority: a DNS-rebound page
+ * reaches this server under the attacker's domain, which the browser puts in
+ * Host, and would otherwise pass an Origin-equals-Host check. A browser
+ * marking the request cross-site is refused; an attached Origin must be this
+ * exact authority. Requests without Origin (non-browser local clients) are
+ * accepted once the Host check passes. The desktop app rewrites its window's
+ * `dsh-app://app` Origin to the Host origin before the request leaves Electron.
+ * @param req - the HTTP or upgrade request.
+ * @returns true when the request is trusted.
  */
-function isSameOrigin(req: IncomingMessage): boolean {
+function isTrustedRequest(req: IncomingMessage): boolean {
+  const host = req.headers.host
+  if (host === undefined) return false
+  let hostUrl: URL
+  try {
+    hostUrl = new URL(`http://${host}`)
+  } catch {
+    // An unparsable Host cannot name a loopback authority.
+    return false
+  }
+  if (!isLoopbackHostname(hostUrl.hostname)) return false
+  if (req.headers['sec-fetch-site'] === 'cross-site') return false
   const origin = req.headers.origin
   if (origin === undefined) return true
   try {
-    return new URL(origin).host === req.headers.host
+    return new URL(origin).host === hostUrl.host
   } catch {
-    // An unparsable Origin cannot name this host.
+    // An unparsable Origin (including the opaque "null") cannot name this host.
     return false
   }
+}
+
+/**
+ * @param hostname - WHATWG-normalized hostname (IPv6 in brackets).
+ * @returns whether it names the local machine.
+ */
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/u.test(hostname)
 }

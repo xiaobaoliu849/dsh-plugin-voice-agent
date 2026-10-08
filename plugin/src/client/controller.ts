@@ -71,6 +71,16 @@ export class VoiceAgentController {
   private player: SpeechPlayer | undefined
   private bridge: HarnessBridge | undefined
   private sessionId: SessionId | undefined
+  /** Incremented on every start and teardown; async steps from an older call abandon their result. */
+  private generation = 0
+  private micOpening = false
+  /**
+   * Whether the speech gate heard the user since the last agent update.
+   * ask_harness and steer_harness require it: an agent update can quote file
+   * or web content, and text injected there must not be able to start or
+   * redirect agent work without the user speaking.
+   */
+  private userSpoke = false
 
   /** @param sessions - the client sessions service the bridge drives. */
   constructor(private readonly sessions: ISessions) {}
@@ -106,9 +116,13 @@ export class VoiceAgentController {
   async start(): Promise<void> {
     if (this.state.phase !== 'idle' && this.state.phase !== 'error') return
     this.set({ ...IDLE, phase: 'connecting' })
+    const generation = ++this.generation
+    this.userSpoke = false
     const player = new SpeechPlayer()
     this.player = player
     await player.resume()
+    // Hung up while the audio output was resuming: teardown already closed the player.
+    if (generation !== this.generation) return
     this.bridge = new HarnessBridge(
       this.sessions,
       () => this.sessionId,
@@ -150,7 +164,7 @@ export class VoiceAgentController {
     switch (message.type) {
       case 'ready':
         this.set({ ...this.state, phase: 'live', error: null })
-        if (this.mic === undefined) void this.openMic()
+        if (this.mic === undefined && !this.micOpening) void this.openMic()
         return
       case 'input_transcript':
         this.appendText('user', message.text)
@@ -163,11 +177,25 @@ export class VoiceAgentController {
         return
       case 'turn_complete':
         return
-      case 'tool_call':
-        void this.bridge?.call(message.name, message.args).then((response) => {
-          this.send({ type: 'tool_response', id: message.id, name: message.name, response })
+      case 'tool_call': {
+        if ((message.name === 'ask_harness' || message.name === 'steer_harness') && !this.userSpoke) {
+          this.send({
+            type: 'tool_response',
+            id: message.id,
+            name: message.name,
+            response: {
+              status: 'refused',
+              error: 'Only a request the user has just spoken can start or change a task. Ask the user what they want.',
+            },
+          })
+          return
+        }
+        const bridge = this.bridge
+        void bridge?.call(message.name, message.args).then((response) => {
+          if (bridge === this.bridge) this.send({ type: 'tool_response', id: message.id, name: message.name, response })
         })
         return
+      }
       case 'tool_cancel':
         // Harness tasks are not cancelled with the voice model's call: the
         // user stops the agent explicitly through stop_harness.
@@ -184,20 +212,34 @@ export class VoiceAgentController {
   }
 
   private async openMic(): Promise<void> {
+    const generation = this.generation
+    this.micOpening = true
     try {
       const gate = new SpeechGate(
         (frame) => { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(frame) },
         () => { this.send({ type: 'audio_end' }) },
+        () => { this.userSpoke = true },
       )
-      this.mic = await startMic((frame) => { gate.push(frame) })
-      this.mic.setMuted(this.state.muted)
+      const mic = await startMic((frame) => { gate.push(frame) })
+      // Hung up while the permission prompt or device setup was pending:
+      // release the device instead of leaving it open without a call.
+      if (generation !== this.generation) {
+        mic.stop()
+        return
+      }
+      this.mic = mic
+      mic.setMuted(this.state.muted)
     } catch (error) {
+      if (generation !== this.generation) return
       this.teardown()
       this.set({ ...this.state, phase: 'error', activity: 'idle', error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      if (generation === this.generation) this.micOpening = false
     }
   }
 
   private sendUpdate(text: string, notice: AgentNotice): void {
+    this.userSpoke = false
     this.pushLine({ role: 'agent', notice })
     this.send({ type: 'agent_update', text })
   }
@@ -222,6 +264,8 @@ export class VoiceAgentController {
   }
 
   private teardown(): void {
+    this.generation += 1
+    this.micOpening = false
     const socket = this.socket
     this.socket = undefined
     if (socket !== undefined && socket.readyState <= WebSocket.OPEN) socket.close(1000)

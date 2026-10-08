@@ -24,8 +24,9 @@ const MIN_SPEECH_RMS = 0.012
  * Sends microphone frames only around speech. Gemini Live bills input audio by
  * duration, so a call left open while the agent works would otherwise pay for
  * minutes of silence. Speech is a frame louder than both {@link MIN_SPEECH_RMS}
- * and three times the tracked noise floor; in a constantly loud room every
- * frame passes and the gate degrades to continuous streaming.
+ * and three times the tracked noise floor. The floor follows quiet frames
+ * quickly and loud frames slowly, so a constant loud background (a fan, music)
+ * raises the threshold over tens of seconds instead of holding the gate open.
  */
 export class SpeechGate {
   private noiseFloor = 0.004
@@ -36,10 +37,12 @@ export class SpeechGate {
   /**
    * @param send - forwards one frame to Gemini.
    * @param pause - signals that streaming stopped after speech (audio stream end).
+   * @param onSpeech - called each time streaming starts because speech was detected.
    */
   constructor(
     private readonly send: (frame: ArrayBuffer) => void,
     private readonly pause: () => void,
+    private readonly onSpeech: () => void,
   ) {}
 
   /**
@@ -49,10 +52,13 @@ export class SpeechGate {
   push(frame: ArrayBuffer): void {
     const level = rms(frame)
     const speech = level > Math.max(MIN_SPEECH_RMS, this.noiseFloor * 3)
-    if (!speech) this.noiseFloor = this.noiseFloor * 0.98 + level * 0.02
+    this.noiseFloor = speech
+      ? this.noiseFloor * 0.999 + level * 0.001
+      : this.noiseFloor * 0.98 + level * 0.02
     if (speech) {
       if (!this.streaming) {
         this.streaming = true
+        this.onSpeech()
         for (const buffered of this.preroll.splice(0)) this.send(buffered)
       }
       this.hangover = HANGOVER_FRAMES
@@ -146,6 +152,11 @@ export async function startMic(onFrame: (frame: ArrayBuffer) => void): Promise<M
   const workletUrl = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'application/javascript' }))
   try {
     await context.audioWorklet.addModule(workletUrl)
+  } catch (error) {
+    // The device is already open; a failed setup must release it.
+    for (const track of stream.getTracks()) track.stop()
+    void context.close()
+    throw error
   } finally {
     URL.revokeObjectURL(workletUrl)
   }

@@ -22,6 +22,13 @@ const GEMINI_LIVE_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.ge
 /** Microphone format the browser sends and Gemini expects. */
 const INPUT_MIME = 'audio/pcm;rate=16000'
 
+/**
+ * Resumptions attempted after Gemini closes before a new session completes
+ * setup. A connection that keeps closing (quota, revoked key) ends the call
+ * instead of reconnecting in a loop.
+ */
+const MAX_RESUME_ATTEMPTS = 3
+
 /** Browser → host control messages (audio travels as binary frames). */
 export type BrowserMessage =
   | { type: 'tool_response'; id: string; name: string; response: Record<string, unknown> }
@@ -81,6 +88,9 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
   let upstream: WebSocket | undefined
   let resumeHandle: string | undefined
   let ended = false
+  /** Consecutive resumptions without a completed setup. */
+  let resumeAttempts = 0
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined
   /** Control frames the browser sent while (re)connecting; audio is dropped instead of queued. */
   const pending: string[] = []
   let ready = false
@@ -99,6 +109,7 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
   const end = (code: number, reason: string): void => {
     if (ended) return
     ended = true
+    clearTimeout(resumeTimer)
     try { upstream?.close() } catch { upstream?.terminate() }
     try { client.close(code, reason.slice(0, 120)) } catch { client.terminate() }
   }
@@ -127,10 +138,11 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
       const text = reason.toString('utf-8')
       // A resumable session that closed on its own (lifetime limit, goAway)
       // continues on a fresh connection; anything else ends the call.
-      if (resumeHandle !== undefined && code !== 1008 && code !== 1007) {
-        logger.info('voice-agent: Gemini Live connection closed (%d %s); resuming', code, text)
+      if (resumeHandle !== undefined && code !== 1008 && code !== 1007 && resumeAttempts < MAX_RESUME_ATTEMPTS) {
+        resumeAttempts += 1
+        logger.info('voice-agent: Gemini Live connection closed (%d %s); resuming (attempt %d)', code, text, resumeAttempts)
         toBrowser({ type: 'reconnecting' })
-        connect()
+        resumeTimer = setTimeout(connect, 1000 * (resumeAttempts - 1))
         return
       }
       toBrowser({ type: 'error', message: `Gemini Live closed the session (${String(code)}${text === '' ? '' : `: ${text}`})` })
@@ -148,6 +160,7 @@ export function runLiveCall(client: WebSocket, options: LiveCallOptions): void {
   const handleServerMessage = (socket: WebSocket, message: LiveServerMessage): void => {
     if (message.setupComplete !== undefined) {
       ready = true
+      resumeAttempts = 0
       for (const frame of pending.splice(0)) socket.send(frame)
       toBrowser({ type: 'ready', model: options.model })
       return

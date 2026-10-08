@@ -30,7 +30,7 @@
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.2.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.3.tgz
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
 3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，保存 Gemini API Key（以 `GEMINI_API_KEY` 存入 harness 凭据存储）。如果 `~/.dsh/.credentials.yaml` 或环境变量 `GEMINI_API_KEY` 里已有 key，会直接使用。
@@ -58,6 +58,12 @@
 - **浏览器端**（`src/client`）：输入框麦克风按钮、通话面板（状态、音量条、字幕、静音、挂断）、`plugins.bundle.config` 插槽中的设置页，以及通过 `ctx.sessions`（prompt、cancel、会话事件窗口）在当前会话上执行语音工具的桥接层。
 
 harness 自身的包（`@deepseek-ai/cordis`、`@deepseek-ai/schemastery`、`@deepseek-ai/dsh-credentials`）是 peer 依赖，由桌面版安装提供；唯一实际安装的依赖是 `ws`。
+
+## 安全
+
+- 通话接口只接受 loopback 的 `Host` 和同源的浏览器请求（与 harness API 相同的防护），其他网站（包括 DNS rebinding 页面）无法用你的 Gemini Key 发起通话。
+- 智能体的回答可能引用文件或网页内容。这些内容以“数据”标记交给语音模型；而且只有在上次智能体汇报之后你亲口说过话，`ask_harness` / `steer_harness` 才会被执行，所以文件里的文字无法自行启动或改变智能体任务。
+- 编程智能体仍按你选择的 harness 权限模式运行，需要批准时照常在窗口中弹出。
 
 ## 从源码构建
 

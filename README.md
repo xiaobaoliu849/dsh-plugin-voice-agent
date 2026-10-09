@@ -13,7 +13,7 @@ You speak ─▶ Realtime Voice Provider ──tool call──▶ DeepSeek Harne
 ```
 
 Supports 4 voice backends:
-1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-Whisper STT with automatic language detection + DeepSeek-V3 streaming + Cartesia Sonic 3.6 TTS with the Jing voice, verified through the API for both Chinese and English output.
+1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-Whisper STT (Chinese-pinned with automatic English retry) + DeepSeek-V4.1-Flash streaming + Cartesia Sonic 3.6 TTS with the Jing voice, verified through the API for both Chinese and English output.
 2. **Qwen Realtime (DashScope)**: Tongyi Qianwen end-to-end multimodal speech model (`qwen3.8-omni-flash-realtime`).
 3. **Doubao Realtime (Volcengine)**: ByteDance Doubao duplex speech dialogue.
 4. **Google Gemini Live**: Gemini bidirectional streaming voice (`gemini-3.8-live`).
@@ -53,7 +53,7 @@ Edited on the plugin's page; changes apply to the next call without a restart.
 | Field | Default | Meaning |
 |---|---|---|
 | `provider` | `cartesia-deepseek` | Voice provider: `cartesia-deepseek`, `qwen`, `doubao`, or `gemini` |
-| `model` | default per provider | Model id (`deepseek-chat`, `qwen3.8-omni-flash-realtime`, `1.2.6.1`, `gemini-3.8-live`) |
+| `model` | default per provider | Model id (`deepseek-flash`, `qwen3.8-omni-flash-realtime`, `1.2.6.1`, `gemini-3.8-live`) |
 | `voice` | default per provider | Prebuilt voice name or ID (e.g. `Katie`, `Tina`, `zh_female_vv_jupiter_bigtts`, `Puck`) |
 | `apiKeyEnv` | default per provider | Credential reference holding the API key |
 | `instructions` | empty | Extra text appended to the voice model's system prompt, e.g. "Always answer in Chinese." |

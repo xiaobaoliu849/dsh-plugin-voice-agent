@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-voice-agent",
   "description": "Realtime voice control for DeepSeek Harness: talk to the agent through Cartesia+DeepSeek, Qwen, Doubao or Gemini Live, steer or stop it, and hear its results",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xiaobaoliu849/dsh-plugin-voice-agent.git"

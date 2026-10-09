@@ -228,7 +228,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: options.model || 'deepseek-chat',
+          model: options.model || 'deepseek-flash',
           messages,
           tools: OPENAI_TOOLS,
           stream: true,
@@ -405,7 +405,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: options.model || 'deepseek-chat',
+          model: options.model || 'deepseek-flash',
           messages: [
             { role: 'system', content: options.instructions },
             ...history,
@@ -462,7 +462,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
   const checkReady = (): void => {
     if (sttReady && ttsReady && !ready) {
       ready = true
-      toBrowser({ type: 'ready', model: options.model || 'deepseek-chat' })
+      toBrowser({ type: 'ready', model: options.model || 'deepseek-flash' })
       for (const chunk of pendingAudio.splice(0)) {
         if (sttWs?.readyState === WebSocket.OPEN) sttWs.send(chunk)
       }

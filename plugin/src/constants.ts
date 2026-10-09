@@ -17,7 +17,7 @@ export const DEFAULT_PROVIDER: VoiceAgentProvider = 'cartesia-deepseek'
 
 /** Default model per provider. */
 export const PROVIDER_DEFAULT_MODELS: Record<VoiceAgentProvider, string> = {
-  'cartesia-deepseek': 'deepseek-chat',
+  'cartesia-deepseek': 'deepseek-flash',
   'qwen': 'qwen3.8-omni-flash-realtime',
   'doubao': '1.2.6.1',
   'gemini': 'gemini-3.8-live',

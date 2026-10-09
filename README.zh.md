@@ -13,7 +13,7 @@
 ```
 
 全面支持 4 大实时语音服务商：
-1. **Cartesia + DeepSeek**（推荐极速）：Cartesia Ink-Whisper 语音转写（中文优先，英语自动回退）+ DeepSeek-V3 流式大模型与工具调用 + Cartesia Sonic 3.6 流式语音合成。默认使用经 API 验证可输出中文和英文的 Jing 音色。
+1. **Cartesia + DeepSeek**（推荐极速）：Cartesia Ink-Whisper 语音转写（中文优先，英语自动回退）+ DeepSeek-V4.1-Flash 流式大模型与工具调用 + Cartesia Sonic 3.6 流式语音合成。默认使用经 API 验证可输出中文和英文的 Jing 音色。
 2. **通义千问 (Qwen Realtime)**：阿里 DashScope 端到端多模态实时语音（`qwen3.8-omni-flash-realtime`）。
 3. **火山引擎 豆包 (Doubao Realtime)**：字节跳动豆包实时全双工语音大模型（`1.2.6.1`）。
 4. **Google Gemini Live**：谷歌双向流式实时语音（`gemini-3.8-live`）。
@@ -53,7 +53,7 @@
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `provider` | `cartesia-deepseek` | 语音服务商：`cartesia-deepseek`、`qwen`、`doubao` 或 `gemini` |
-| `model` | 各服务商默认 | 模型 ID（`deepseek-chat`、`qwen3.8-omni-flash-realtime`、`1.2.6.1`、`gemini-3.8-live`） |
+| `model` | 各服务商默认 | 模型 ID（`deepseek-flash`、`qwen3.8-omni-flash-realtime`、`1.2.6.1`、`gemini-3.8-live`） |
 | `voice` | 各服务商默认 | 预置音色（如 `Katie`、`Tina`、`zh_female_vv_jupiter_bigtts`、`Puck`） |
 | `apiKeyEnv` | 各服务商默认 | 保存 API Key 的凭据引用 |
 | `instructions` | 空 | 追加到语音模型系统提示的文字，例如“始终用中文回答”。 |

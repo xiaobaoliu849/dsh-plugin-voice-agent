@@ -10,6 +10,20 @@ const DEFAULT_VOICE_ID = CARTESIA_DEFAULT_VOICE
 const CARTESIA_WS_BASE = 'wss://api.cartesia.ai'
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 
+/**
+ * Ink-Whisper has no language auto-detection (the `language` param defaults to
+ * `en` and rejects `auto`), and Chinese under `en` comes out as garbage while
+ * English under `zh` comes back empty. So the primary socket pins Chinese and
+ * an empty transcript with real audio behind it is replayed once on a
+ * throwaway English socket.
+ */
+const PRIMARY_STT_LANGUAGE = 'zh'
+const FALLBACK_STT_LANGUAGE = 'en'
+/** Minimum buffered audio (0.5s of pcm_s16le 16kHz) worth an English retry. */
+const MIN_RETRY_BYTES = 16000
+/** Cap on the per-utterance replay buffer (~60s of pcm_s16le 16kHz). */
+const MAX_UTTERANCE_BYTES = 1920000
+
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content?: string
@@ -65,6 +79,10 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
   const pendingAudio: Buffer[] = []
   let inputTranscript = ''
   let inputActive = false
+  /** Buffered audio of the current utterance, kept for the English retry. */
+  let utteranceChunks: Buffer[] = []
+  let utteranceBytes = 0
+  let fallbackSocket: WebSocket | null = null
   const toolWaiters = new Map<string, (resp: Record<string, unknown>) => void>()
 
   const headers = {
@@ -72,8 +90,8 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     'Cartesia-Version': CARTESIA_VERSION,
   }
 
-  // Connect STT WebSocket
-  const sttUrl = `${CARTESIA_WS_BASE}/stt/websocket?model=${DEFAULT_STT_MODEL}&language=zh&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
+  // Connect STT WebSocket (Chinese primary; see the language note above).
+  const sttUrl = `${CARTESIA_WS_BASE}/stt/websocket?model=${DEFAULT_STT_MODEL}&language=${PRIMARY_STT_LANGUAGE}&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
   const sttWs = new WebSocket(sttUrl, { headers })
 
   // Connect TTS WebSocket
@@ -87,6 +105,10 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     if (currentAbortController) {
       currentAbortController.abort()
       currentAbortController = null
+    }
+    if (fallbackSocket) {
+      try { fallbackSocket.close() } catch { fallbackSocket.terminate() }
+      fallbackSocket = null
     }
     try { sttWs?.close() } catch { sttWs?.terminate() }
     try { ttsWs?.close() } catch { ttsWs?.terminate() }
@@ -106,6 +128,51 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
       }
     }
     toBrowser({ type: 'interrupted' })
+  }
+
+  /**
+   * Replay the buffered utterance on a throwaway English STT socket. Called
+   * when the Chinese socket flushed with an empty transcript despite real
+   * audio — Ink-Whisper under `zh` drops English speech silently.
+   */
+  const retryWithEnglishStt = (chunks: readonly Buffer[]): void => {
+    if (ended || fallbackSocket) return
+    const url = `${CARTESIA_WS_BASE}/stt/websocket?model=${DEFAULT_STT_MODEL}&language=${FALLBACK_STT_LANGUAGE}&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
+    const ws = new WebSocket(url, { headers })
+    fallbackSocket = ws
+    let transcript = ''
+    const finish = (): void => {
+      if (fallbackSocket !== ws) return
+      fallbackSocket = null
+      try { ws.close() } catch { ws.terminate() }
+      const text = transcript.trim()
+      // Skip dispatch when the call ended or the user is already speaking
+      // again — a stale retry must not hijack the new utterance's turn.
+      if (text && !ended && !inputActive) {
+        toBrowser({ type: 'input_transcript', text })
+        void generateReply(text)
+      }
+    }
+    const timeout = setTimeout(() => {
+      logger.warn('voice-agent: English STT retry timed out')
+      finish()
+    }, 15000)
+    const finishOnce = (): void => { clearTimeout(timeout); finish() }
+    ws.on('open', () => {
+      for (const chunk of chunks) ws.send(chunk)
+      ws.send('finalize')
+    })
+    ws.on('message', (raw: RawData) => {
+      try {
+        const event = JSON.parse(raw.toString('utf-8')) as { type?: string; text?: string; is_final?: boolean }
+        if (event.type === 'transcript' && event.is_final) transcript += event.text ?? ''
+        else if (event.type === 'flush_done') finishOnce()
+      } catch {
+        // ignore
+      }
+    })
+    ws.on('error', () => finishOnce())
+    ws.on('close', finishOnce)
   }
 
   const handleToolResponse = (id: string, response: Record<string, unknown>): void => {
@@ -425,9 +492,15 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
       } else if (event.type === 'flush_done') {
         const text = inputTranscript.trim()
         inputTranscript = ''
+        const chunks = utteranceChunks
+        const bytes = utteranceBytes
+        utteranceChunks = []
+        utteranceBytes = 0
         if (text) {
           toBrowser({ type: 'input_transcript', text })
           void generateReply(text)
+        } else if (bytes >= MIN_RETRY_BYTES) {
+          retryWithEnglishStt(chunks)
         }
       } else if (event.type === 'error') {
         toBrowser({ type: 'error', message: `Cartesia STT: ${event.message || 'unknown error'}` })
@@ -483,6 +556,10 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
         bargeIn()
       }
       const chunk = rawBuffer(data)
+      if (utteranceBytes < MAX_UTTERANCE_BYTES) {
+        utteranceChunks.push(chunk)
+        utteranceBytes += chunk.length
+      }
       if (!ready || sttWs?.readyState !== WebSocket.OPEN) {
         pendingAudio.push(chunk)
         return

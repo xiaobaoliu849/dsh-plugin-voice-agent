@@ -6,6 +6,23 @@ const DEFAULT_DASHSCOPE_WS = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 const DEFAULT_MODEL = 'qwen3.8-omni-flash-realtime'
 const DEFAULT_VOICE = 'Tina'
 
+interface QwenServerEvent {
+  type?: string
+  transcript?: string
+  delta?: string
+  call_id?: string
+  name?: string
+  arguments?: string
+  item?: {
+    type?: string
+    call_id?: string
+    id?: string
+    name?: string
+    arguments?: string
+  }
+  error?: { message?: string }
+}
+
 export function runQwenCall(client: WebSocket, options: ProviderSessionOptions): void {
   const { logger } = options
 
@@ -47,8 +64,8 @@ export function runQwenCall(client: WebSocket, options: ProviderSessionOptions):
 
   const dispatchedToolCalls = new Set<string>()
 
-  const dispatchToolCall = (id: string, name: string, rawArgs: string | undefined): void => {
-    if (!id || dispatchedToolCalls.has(id)) return
+  const dispatchToolCall = (id: string | undefined, name: string | undefined, rawArgs: string | undefined): void => {
+    if (!id || !name || dispatchedToolCalls.has(id)) return
     dispatchedToolCalls.add(id)
     let args: Record<string, unknown> = {}
     try {
@@ -100,9 +117,9 @@ export function runQwenCall(client: WebSocket, options: ProviderSessionOptions):
     })
 
     upstream.on('message', (raw: RawData) => {
-      let event: any
+      let event: QwenServerEvent
       try {
-        event = JSON.parse(raw.toString('utf-8'))
+        event = JSON.parse(raw.toString('utf-8')) as QwenServerEvent
       } catch {
         return
       }

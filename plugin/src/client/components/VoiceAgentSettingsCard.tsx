@@ -83,7 +83,11 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
     instructions: value.instructions,
   }
 
-  const dirty = form.provider !== value.provider || form.model !== value.model || form.voice !== value.voice || form.instructions !== value.instructions
+  const dirty =
+    form.provider !== value.provider ||
+    form.model !== value.model ||
+    form.voice !== value.voice ||
+    form.instructions !== value.instructions
 
   const edit = (patch: Partial<typeof form>): void => {
     setNotice(null)

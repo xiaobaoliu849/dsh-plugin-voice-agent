@@ -6,6 +6,24 @@ const DEFAULT_DOUBAO_WS = 'wss://openspeech.bytedance.com/api/v3/duplex/realtime
 const DEFAULT_MODEL = '1.2.6.1'
 const DEFAULT_VOICE = 'zh_female_vv_jupiter_bigtts'
 
+interface DoubaoServerEvent {
+  event_type?: string
+  type?: string
+  text?: string
+  transcript?: string
+  delta?: string
+  audio?: string
+  data?: string
+  id?: string
+  call_id?: string
+  name?: string
+  function?: { name?: string }
+  arguments?: string | Record<string, unknown>
+  args?: Record<string, unknown>
+  message?: string
+  error?: string
+}
+
 export function runDoubaoCall(client: WebSocket, options: ProviderSessionOptions): void {
   const { logger } = options
 
@@ -78,9 +96,9 @@ export function runDoubaoCall(client: WebSocket, options: ProviderSessionOptions
     })
 
     upstream.on('message', (raw: RawData) => {
-      let event: any
+      let event: DoubaoServerEvent
       try {
-        event = JSON.parse(raw.toString('utf-8'))
+        event = JSON.parse(raw.toString('utf-8')) as DoubaoServerEvent
       } catch {
         return
       }
@@ -108,15 +126,21 @@ export function runDoubaoCall(client: WebSocket, options: ProviderSessionOptions
 
         case 'user_transcript':
         case 'transcript':
-          if (event.text || event.transcript) {
-            toBrowser({ type: 'input_transcript', text: event.text || event.transcript })
+          {
+            const inText = event.text || event.transcript
+            if (inText) {
+              toBrowser({ type: 'input_transcript', text: inText })
+            }
           }
           break
 
         case 'assistant_transcript':
         case 'delta_text':
-          if (event.text || event.delta) {
-            toBrowser({ type: 'output_transcript', text: event.text || event.delta })
+          {
+            const outText = event.text || event.delta
+            if (outText) {
+              toBrowser({ type: 'output_transcript', text: outText })
+            }
           }
           break
 

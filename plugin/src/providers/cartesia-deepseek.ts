@@ -52,8 +52,6 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     return
   }
 
-  let sttWs: WebSocket | undefined
-  let ttsWs: WebSocket | undefined
   let ended = false
   let ready = false
 
@@ -69,6 +67,14 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     Authorization: `Bearer ${cartesiaKey}`,
     'Cartesia-Version': CARTESIA_VERSION,
   }
+
+  // Connect STT WebSocket
+  const sttUrl = `${CARTESIA_WS_BASE}/stt/turns/websocket?model=${DEFAULT_STT_MODEL}&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
+  const sttWs = new WebSocket(sttUrl, { headers })
+
+  // Connect TTS WebSocket
+  const ttsUrl = `${CARTESIA_WS_BASE}/tts/websocket?cartesia_version=${CARTESIA_VERSION}`
+  const ttsWs = new WebSocket(ttsUrl, { headers })
 
   const end = (code: number, reason: string): void => {
     if (ended) return
@@ -375,13 +381,6 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     }
   }
 
-  // Connect STT WebSocket
-  const sttUrl = `${CARTESIA_WS_BASE}/stt/turns/websocket?model=${DEFAULT_STT_MODEL}&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
-  sttWs = new WebSocket(sttUrl, { headers })
-
-  // Connect TTS WebSocket
-  const ttsUrl = `${CARTESIA_WS_BASE}/tts/websocket?cartesia_version=${CARTESIA_VERSION}`
-  ttsWs = new WebSocket(ttsUrl, { headers })
 
   let sttReady = false
   let ttsReady = false

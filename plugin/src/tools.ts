@@ -167,4 +167,3 @@ export const OPENAI_REALTIME_TOOLS = [
     parameters: { type: 'object', properties: {} }
   }
 ] as const
-

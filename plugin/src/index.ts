@@ -34,12 +34,24 @@ export const name = 'voice-agent'
 /** Host services this plugin requires before it can compose. */
 export const inject = ['webServer']
 
+export interface VoiceAgentPluginConfig {
+  provider?: { get?: () => unknown }
+  model?: { get?: () => string }
+  voice?: { get?: () => string }
+  apiKeyEnv?: { get?: () => string }
+  instructions?: { get?: () => string }
+  priceAudioInput?: { get?: () => number }
+  priceTextInput?: { get?: () => number }
+  priceAudioOutput?: { get?: () => number }
+  priceTextOutput?: { get?: () => number }
+}
+
 /**
  * Register the status route and the call upgrade.
  * @param ctx - host plugin context.
  * @param config - optional live references to plugin Config when run as a standalone bundle.
  */
-export function apply(ctx: Context, config?: any): void {
+export function apply(ctx: Context, config?: VoiceAgentPluginConfig): void {
   const settingsService = ctx.get('settings')
   const scope = settingsService !== undefined
     ? settingsService.register(VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema)
@@ -48,12 +60,13 @@ export function apply(ctx: Context, config?: any): void {
   const settings = (): VoiceAgentSettings => {
     if (scope !== undefined) return scope.get()
     if (config?.model?.get !== undefined) {
+      const p = (config.provider?.get?.() as VoiceAgentProvider) || DEFAULT_PROVIDER
       return {
-        provider: (config.provider?.get?.() as VoiceAgentProvider) || DEFAULT_PROVIDER,
+        provider: p,
         model: config.model.get(),
-        voice: config.voice.get(),
-        apiKeyEnv: config.apiKeyEnv.get(),
-        instructions: config.instructions.get(),
+        voice: config.voice?.get?.() ?? PROVIDER_DEFAULT_VOICES[p],
+        apiKeyEnv: config.apiKeyEnv?.get?.() ?? DEFAULT_API_KEY_ENV,
+        instructions: config.instructions?.get?.() ?? '',
         priceAudioInput: config.priceAudioInput?.get?.() ?? 3,
         priceTextInput: config.priceTextInput?.get?.() ?? 0.75,
         priceAudioOutput: config.priceAudioOutput?.get?.() ?? 4.5,

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { VoiceAgentKey } from '../locales.ts'
 import {
-  PROVIDER_DEFAULT_MODELS, PROVIDER_DEFAULT_VOICES, PROVIDER_VOICES,
+  CARTESIA_VOICE_NAMES, PROVIDER_DEFAULT_MODELS, PROVIDER_DEFAULT_VOICES, PROVIDER_VOICES,
   VOICE_AGENT_PROVIDERS, type VoiceAgentProvider,
 } from '../../constants.ts'
 import styles from './VoiceAgent.module.css'
@@ -193,7 +193,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           disabled={snapshot.status !== 'ready'}
           onChange={(event) => { edit({ voice: event.target.value }) }}
         >
-          {voiceOptions.map(voice => <option key={voice} value={voice}>{voice}</option>)}
+          {voiceOptions.map(voice => <option key={voice} value={voice}>{form.provider === 'cartesia-deepseek' ? (CARTESIA_VOICE_NAMES[voice] ?? voice) : voice}</option>)}
         </select>
       </div>
 

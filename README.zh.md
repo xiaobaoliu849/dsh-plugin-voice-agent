@@ -13,7 +13,7 @@
 ```
 
 全面支持 4 大实时语音服务商：
-1. **Cartesia + DeepSeek**（推荐极速）：Cartesia Ink-2 极速语音识别 + DeepSeek-V3 流式大模型与工具调用 + Cartesia Sonic-2 超自然流式语音合成。
+1. **Cartesia + DeepSeek**（推荐极速）：Cartesia Ink-Whisper 中文语音识别 + DeepSeek-V3 流式大模型与工具调用 + Cartesia Sonic 3.6 流式语音合成。默认使用经 API 验证可输出中文和英文的 Jing 音色。
 2. **通义千问 (Qwen Realtime)**：阿里 DashScope 端到端多模态实时语音（`qwen3.8-omni-flash-realtime`）。
 3. **火山引擎 豆包 (Doubao Realtime)**：字节跳动豆包实时全双工语音大模型（`1.2.6.1`）。
 4. **Google Gemini Live**：谷歌双向流式实时语音（`gemini-3.8-live`）。
@@ -33,12 +33,12 @@
 
 ## 安装到桌面版
 
-需要 DeepSeek Harness 桌面版 `0.2.0-rc.2` 或兼容版本。
+需要 DeepSeek Harness 桌面版 `0.2.0-rc.2` 或兼容版本。`0.3.3` 修复了插件启动时的设置 API 不兼容，并使用支持中文的 Cartesia Ink-Whisper，在麦克风停顿后显式完成转写并执行任务。Host 使用响应式 `Config`，浏览器 bundle 使用独立的 `dsh-plugin-voice-agent` 模块标识。构建必须使用对应的 `0.2.0-rc.2` 源码，不能使用旧的 `0.1.2-alpha.4` 工作区。
 
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.3.0.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add (Resolve-Path .\release\dsh-plugin-voice-agent-0.3.4.tgz)
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
 3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，选择你喜欢的服务商（如 Cartesia + DeepSeek）。保存 API Key 或直接让系统自动读取 `D:\voicespirit\config.json` 或环境变量。

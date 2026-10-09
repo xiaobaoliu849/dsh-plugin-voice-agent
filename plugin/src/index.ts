@@ -11,13 +11,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-settings'
 import { runLiveCall } from './live.ts'
 import {
   DEFAULT_API_KEY_ENV, DEFAULT_PROVIDER,
   PROVIDER_DEFAULT_MODELS, PROVIDER_DEFAULT_VOICES,
-  VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema,
-  loadVoiceSpiritFallback, type VoiceAgentProvider, type VoiceAgentSettings,
+  loadVoiceSpiritFallback, type Config, type VoiceAgentProvider, type VoiceAgentSettings,
 } from './settings.ts'
 import { FUNCTION_DECLARATIONS, buildInstructions } from './tools.ts'
 
@@ -34,55 +32,24 @@ export const name = 'voice-agent'
 /** Host services this plugin requires before it can compose. */
 export const inject = ['webServer']
 
-export interface VoiceAgentPluginConfig {
-  provider?: { get?: () => unknown }
-  model?: { get?: () => string }
-  voice?: { get?: () => string }
-  apiKeyEnv?: { get?: () => string }
-  instructions?: { get?: () => string }
-  priceAudioInput?: { get?: () => number }
-  priceTextInput?: { get?: () => number }
-  priceAudioOutput?: { get?: () => number }
-  priceTextOutput?: { get?: () => number }
-}
-
 /**
  * Register the status route and the call upgrade.
  * @param ctx - host plugin context.
- * @param config - optional live references to plugin Config when run as a standalone bundle.
+ * @param config - live references to plugin Config.
  */
-export function apply(ctx: Context, config?: VoiceAgentPluginConfig): void {
-  const settingsService = ctx.get('settings')
-  const scope = settingsService !== undefined
-    ? settingsService.register(VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema)
-    : undefined
-
+export function apply(ctx: Context, config: Config): void {
   const settings = (): VoiceAgentSettings => {
-    if (scope !== undefined) return scope.get()
-    if (config?.model?.get !== undefined) {
-      const p = (config.provider?.get?.() as VoiceAgentProvider) || DEFAULT_PROVIDER
-      return {
-        provider: p,
-        model: config.model.get(),
-        voice: config.voice?.get?.() ?? PROVIDER_DEFAULT_VOICES[p],
-        apiKeyEnv: config.apiKeyEnv?.get?.() ?? DEFAULT_API_KEY_ENV,
-        instructions: config.instructions?.get?.() ?? '',
-        priceAudioInput: config.priceAudioInput?.get?.() ?? 3,
-        priceTextInput: config.priceTextInput?.get?.() ?? 0.75,
-        priceAudioOutput: config.priceAudioOutput?.get?.() ?? 4.5,
-        priceTextOutput: config.priceTextOutput?.get?.() ?? 4.5,
-      }
-    }
+    const p = (config?.provider?.get?.() as VoiceAgentProvider) || DEFAULT_PROVIDER
     return {
-      provider: DEFAULT_PROVIDER,
-      model: PROVIDER_DEFAULT_MODELS[DEFAULT_PROVIDER],
-      voice: PROVIDER_DEFAULT_VOICES[DEFAULT_PROVIDER],
-      apiKeyEnv: DEFAULT_API_KEY_ENV,
-      instructions: '',
-      priceAudioInput: 3,
-      priceTextInput: 0.75,
-      priceAudioOutput: 4.5,
-      priceTextOutput: 4.5,
+      provider: p,
+      model: config?.model?.get?.() || PROVIDER_DEFAULT_MODELS[p],
+      voice: config?.voice?.get?.() || PROVIDER_DEFAULT_VOICES[p],
+      apiKeyEnv: config?.apiKeyEnv?.get?.() || DEFAULT_API_KEY_ENV,
+      instructions: config?.instructions?.get?.() || '',
+      priceAudioInput: config?.priceAudioInput?.get?.() ?? 3,
+      priceTextInput: config?.priceTextInput?.get?.() ?? 0.75,
+      priceAudioOutput: config?.priceAudioOutput?.get?.() ?? 4.5,
+      priceTextOutput: config?.priceTextOutput?.get?.() ?? 4.5,
     }
   }
 

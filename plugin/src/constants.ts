@@ -23,9 +23,17 @@ export const PROVIDER_DEFAULT_MODELS: Record<VoiceAgentProvider, string> = {
   'gemini': 'gemini-3.8-live',
 }
 
+/** Verified Mandarin voice that also synthesizes English with Sonic 3.6. */
+export const CARTESIA_DEFAULT_VOICE = '6eb8965c-e295-47bd-a9e4-3eeebb3abcff'
+
+/** Cartesia voice IDs and names returned by the voices API. */
+export const CARTESIA_VOICE_NAMES: Record<string, string> = {
+  [CARTESIA_DEFAULT_VOICE]: 'Jing - Clear Coordinator',
+}
+
 /** Default voice per provider. */
 export const PROVIDER_DEFAULT_VOICES: Record<VoiceAgentProvider, string> = {
-  'cartesia-deepseek': 'f786b574-daa5-4673-aa0c-cbe3e8534c02', // Katie
+  'cartesia-deepseek': CARTESIA_DEFAULT_VOICE,
   'qwen': 'Tina',
   'doubao': 'zh_female_vv_jupiter_bigtts',
   'gemini': 'Puck',
@@ -33,13 +41,7 @@ export const PROVIDER_DEFAULT_VOICES: Record<VoiceAgentProvider, string> = {
 
 /** Prebuilt voice lists per provider. */
 export const PROVIDER_VOICES: Record<VoiceAgentProvider, readonly string[]> = {
-  'cartesia-deepseek': [
-    'f786b574-daa5-4673-aa0c-cbe3e8534c02', // Katie (en)
-    '227282cb-beee-4322-a9b4-7f15be0f0928', // Chinese / Multilingual
-    'sonic-multilingual',
-    'Jack',
-    'Eileen',
-  ],
+  'cartesia-deepseek': [CARTESIA_DEFAULT_VOICE],
   'qwen': [
     'Tina',
     'longanqian',

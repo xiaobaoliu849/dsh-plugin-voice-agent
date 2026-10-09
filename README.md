@@ -13,7 +13,7 @@ You speak ─▶ Realtime Voice Provider ──tool call──▶ DeepSeek Harne
 ```
 
 Supports 4 voice backends:
-1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-2 STT + DeepSeek-V3 streaming + Cartesia Sonic-2 TTS.
+1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-Whisper Chinese STT + DeepSeek-V3 streaming + Cartesia Sonic 3.6 TTS with the Jing voice, verified through the API for both Chinese and English output.
 2. **Qwen Realtime (DashScope)**: Tongyi Qianwen end-to-end multimodal speech model (`qwen3.8-omni-flash-realtime`).
 3. **Doubao Realtime (Volcengine)**: ByteDance Doubao duplex speech dialogue.
 4. **Google Gemini Live**: Gemini bidirectional streaming voice (`gemini-3.8-live`).
@@ -33,12 +33,12 @@ When the agent needs approval for a tool, the voice tells you to approve or deny
 
 ## Install into the desktop app
 
-Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
+Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release. Version `0.3.3` fixes the settings API incompatibility during plugin startup and uses Cartesia Ink-Whisper with Chinese transcription, explicitly finalizing speech after microphone gating to dispatch tasks. The Host uses reactive `Config`, and the browser bundle registers its own `dsh-plugin-voice-agent` module ID. Build against the matching `0.2.0-rc.2` sources; the older `0.1.2-alpha.4` workspace is incompatible.
 
 1. Quit the desktop app.
 2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.3.0.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add (Resolve-Path .\release\dsh-plugin-voice-agent-0.3.4.tgz)
    ```
    A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
 3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and select your preferred voice provider. Save your API key or let it automatically resolve from `D:\voicespirit\config.json` or your environment variables.

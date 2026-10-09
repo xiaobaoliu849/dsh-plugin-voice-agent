@@ -1,11 +1,12 @@
 import { WebSocket, type RawData } from 'ws'
 import { OPENAI_TOOLS } from '../tools.ts'
+import { CARTESIA_DEFAULT_VOICE } from '../constants.ts'
 import type { BrowserMessage, HostMessage, ProviderSessionOptions } from './types.ts'
 
 const CARTESIA_VERSION = '2024-06-10'
-const DEFAULT_STT_MODEL = 'ink-2'
-const DEFAULT_TTS_MODEL = 'sonic-multilingual'
-const DEFAULT_VOICE_ID = 'f786b574-daa5-4673-aa0c-cbe3e8534c02' // Katie
+const DEFAULT_STT_MODEL = 'ink-whisper'
+const DEFAULT_TTS_MODEL = 'sonic-3.6'
+const DEFAULT_VOICE_ID = CARTESIA_DEFAULT_VOICE
 const CARTESIA_WS_BASE = 'wss://api.cartesia.ai'
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 
@@ -58,9 +59,12 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
   const history: ChatMessage[] = []
   let currentTurnSeq = 0
   let currentContextId = ''
+  let outputLanguage: 'zh' | 'en' = 'zh'
   let currentAbortController: AbortController | null = null
 
   const pendingAudio: Buffer[] = []
+  let inputTranscript = ''
+  let inputActive = false
   const toolWaiters = new Map<string, (resp: Record<string, unknown>) => void>()
 
   const headers = {
@@ -69,7 +73,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
   }
 
   // Connect STT WebSocket
-  const sttUrl = `${CARTESIA_WS_BASE}/stt/turns/websocket?model=${DEFAULT_STT_MODEL}&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
+  const sttUrl = `${CARTESIA_WS_BASE}/stt/websocket?model=${DEFAULT_STT_MODEL}&language=zh&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${CARTESIA_VERSION}`
   const sttWs = new WebSocket(sttUrl, { headers })
 
   // Connect TTS WebSocket
@@ -114,6 +118,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
 
   const generateReply = async (userPrompt: string): Promise<void> => {
     bargeIn()
+    outputLanguage = /\p{Script=Han}/u.test(userPrompt) ? 'zh' : 'en'
     currentTurnSeq += 1
     const seq = currentTurnSeq
     const contextId = `vs-ds-${seq}-${Date.now().toString(36)}`
@@ -134,6 +139,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
         ttsWs.send(JSON.stringify({
           model_id: ttsModel,
           voice: { mode: 'id', id: voiceId },
+          language: outputLanguage,
           output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
           context_id: contextId,
           transcript: textChunk,
@@ -315,6 +321,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
         ttsWs.send(JSON.stringify({
           model_id: DEFAULT_TTS_MODEL,
           voice: { mode: 'id', id: voiceId },
+          language: outputLanguage,
           output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
           context_id: contextId,
           transcript: textChunk,
@@ -409,13 +416,15 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
     try {
       const event = JSON.parse(raw.toString('utf-8')) as {
         type?: string
-        transcript?: string
+        text?: string
+        is_final?: boolean
         message?: string
       }
-      if (event.type === 'turn.start') {
-        bargeIn()
-      } else if (event.type === 'turn.end' || event.type === 'transcript') {
-        const text = (event.transcript || '').trim()
+      if (event.type === 'transcript' && event.is_final) {
+        inputTranscript += event.text ?? ''
+      } else if (event.type === 'flush_done') {
+        const text = inputTranscript.trim()
+        inputTranscript = ''
         if (text) {
           toBrowser({ type: 'input_transcript', text })
           void generateReply(text)
@@ -436,6 +445,7 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
         audio?: string
         context_id?: string
         done?: boolean
+        error?: string
       }
       if (event.type === 'chunk') {
         if (event.context_id && event.context_id !== currentContextId) return
@@ -448,6 +458,8 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
         }
       } else if (event.type === 'done') {
         toBrowser({ type: 'turn_complete' })
+      } else if (event.type === 'error') {
+        toBrowser({ type: 'error', message: `Cartesia TTS: ${event.error || 'unknown error'}` })
       }
     } catch {
       // ignore
@@ -466,6 +478,10 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
 
   client.on('message', (data: RawData, isBinary: boolean) => {
     if (isBinary) {
+      if (!inputActive) {
+        inputActive = true
+        bargeIn()
+      }
       const chunk = rawBuffer(data)
       if (!ready || sttWs?.readyState !== WebSocket.OPEN) {
         pendingAudio.push(chunk)
@@ -477,7 +493,10 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
 
     try {
       const msg = JSON.parse(rawBuffer(data).toString('utf-8')) as BrowserMessage
-      if (msg.type === 'tool_response') {
+      if (msg.type === 'audio_end') {
+        inputActive = false
+        if (sttWs.readyState === WebSocket.OPEN) sttWs.send('finalize')
+      } else if (msg.type === 'tool_response') {
         handleToolResponse(msg.id, msg.response)
       } else if (msg.type === 'agent_update' || msg.type === 'text') {
         void generateReply(msg.text)

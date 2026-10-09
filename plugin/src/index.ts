@@ -1,9 +1,8 @@
 /**
  * @deepseek-ai/dsh-host-voice-agent — host half of realtime voice control.
  *
- * Serves a status route and the `/api/voice-agent/ws` upgrade that pairs each browser call with a Gemini
- * Live session (see {@link runLiveCall}). The Gemini API key is resolved from
- * the credentials store on every call start and never reaches the browser.
+ * Serves a status route and the `/api/voice-agent/ws` upgrade that pairs each browser call with
+ * a realtime voice provider session.
  * @module @deepseek-ai/dsh-host-voice-agent
  */
 
@@ -12,13 +11,17 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type {} from '@deepseek-ai/dsh-settings'
 import { runLiveCall } from './live.ts'
-import type { Config, VoiceAgentSettings } from './settings.ts'
+import {
+  DEFAULT_API_KEY_ENV, DEFAULT_PROVIDER,
+  PROVIDER_DEFAULT_MODELS, PROVIDER_DEFAULT_VOICES,
+  VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema,
+  loadVoiceSpiritFallback, type VoiceAgentProvider, type VoiceAgentSettings,
+} from './settings.ts'
 import { FUNCTION_DECLARATIONS, buildInstructions } from './tools.ts'
 
-export {
-  Config, DEFAULT_API_KEY_ENV, DEFAULT_MODEL, VOICE_AGENT_VOICES, type VoiceAgentSettings,
-} from './settings.ts'
+export * from './settings.ts'
 export { VOICE_AGENT_TOOLS } from './tools.ts'
 export type { BrowserMessage, HostMessage } from './live.ts'
 
@@ -34,26 +37,84 @@ export const inject = ['webServer']
 /**
  * Register the status route and the call upgrade.
  * @param ctx - host plugin context.
- * @param config - live references to the plugin Config.
+ * @param config - optional live references to plugin Config when run as a standalone bundle.
  */
-export function apply(ctx: Context, config: Config): void {
-  const settings = (): VoiceAgentSettings => ({
-    model: config.model.get(),
-    voice: config.voice.get(),
-    apiKeyEnv: config.apiKeyEnv.get(),
-    instructions: config.instructions.get(),
-    priceAudioInput: config.priceAudioInput.get(),
-    priceTextInput: config.priceTextInput.get(),
-    priceAudioOutput: config.priceAudioOutput.get(),
-    priceTextOutput: config.priceTextOutput.get(),
-  })
+export function apply(ctx: Context, config?: any): void {
+  const settingsService = ctx.get('settings')
+  const scope = settingsService !== undefined
+    ? settingsService.register(VOICE_AGENT_NAMESPACE, VoiceAgentSettingsSchema)
+    : undefined
 
-  const resolveApiKey = async (): Promise<string | undefined> => {
-    const ref = credentialRef(settings().apiKeyEnv)
+  const settings = (): VoiceAgentSettings => {
+    if (scope !== undefined) return scope.get()
+    if (config?.model?.get !== undefined) {
+      return {
+        provider: (config.provider?.get?.() as VoiceAgentProvider) || DEFAULT_PROVIDER,
+        model: config.model.get(),
+        voice: config.voice.get(),
+        apiKeyEnv: config.apiKeyEnv.get(),
+        instructions: config.instructions.get(),
+        priceAudioInput: config.priceAudioInput?.get?.() ?? 3,
+        priceTextInput: config.priceTextInput?.get?.() ?? 0.75,
+        priceAudioOutput: config.priceAudioOutput?.get?.() ?? 4.5,
+        priceTextOutput: config.priceTextOutput?.get?.() ?? 4.5,
+      }
+    }
+    return {
+      provider: DEFAULT_PROVIDER,
+      model: PROVIDER_DEFAULT_MODELS[DEFAULT_PROVIDER],
+      voice: PROVIDER_DEFAULT_VOICES[DEFAULT_PROVIDER],
+      apiKeyEnv: DEFAULT_API_KEY_ENV,
+      instructions: '',
+      priceAudioInput: 3,
+      priceTextInput: 0.75,
+      priceAudioOutput: 4.5,
+      priceTextOutput: 4.5,
+    }
+  }
+
+  const resolveApiKey = async (provider: VoiceAgentProvider): Promise<string | undefined> => {
+    const current = settings()
+    const ref = credentialRef(current.apiKeyEnv)
     const credentials = ctx.get('credentials')
-    if (credentials !== undefined) return (await credentials.resolve(ref))?.value
+    if (credentials !== undefined) {
+      const resolved = (await credentials.resolve(ref))?.value
+      if (resolved && resolved.length > 0) return resolved
+    }
+
     const ambient = process.env[ref]
-    return ambient !== undefined && ambient.length > 0 ? ambient : undefined
+    if (ambient !== undefined && ambient.length > 0) return ambient
+
+    // Provider specific environment variables
+    const envMap: Record<VoiceAgentProvider, string[]> = {
+      'cartesia-deepseek': ['DEEPSEEK_API_KEY', 'CARTESIA_API_KEY'],
+      'qwen': ['DASHSCOPE_API_KEY'],
+      'doubao': ['DOUBAO_API_KEY', 'VOLC_API_KEY', 'VOLC_ACCESS_KEY'],
+      'gemini': ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    }
+
+    for (const envName of envMap[provider] ?? []) {
+      const val = process.env[envName]
+      if (val && val.length > 0) return val
+    }
+
+    // Fallback to D:\voicespirit\config.json
+    const fallback = loadVoiceSpiritFallback()
+    if (fallback) {
+      if (provider === 'cartesia-deepseek') {
+        if (fallback.cartesiaApiKey || fallback.deepseekApiKey) {
+          return fallback.deepseekApiKey || fallback.cartesiaApiKey
+        }
+      } else if (provider === 'qwen' && fallback.dashscopeApiKey) {
+        return fallback.dashscopeApiKey
+      } else if (provider === 'doubao' && (fallback.doubaoApiKey || fallback.doubaoAccessToken)) {
+        return fallback.doubaoApiKey || fallback.doubaoAccessToken
+      } else if (provider === 'gemini' && fallback.googleApiKey) {
+        return fallback.googleApiKey
+      }
+    }
+
+    return undefined
   }
 
   ctx.effect(() => ctx.webServer.register({
@@ -66,12 +127,14 @@ export function apply(ctx: Context, config: Config): void {
         return
       }
       const current = settings()
+      const configuredKey = await resolveApiKey(current.provider)
       const body = JSON.stringify({
         ok: true,
+        provider: current.provider,
         model: current.model,
         voice: current.voice,
         apiKeyEnv: current.apiKeyEnv,
-        keyConfigured: (await resolveApiKey()) !== undefined,
+        keyConfigured: configuredKey !== undefined,
       })
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
       res.end(body)
@@ -79,8 +142,6 @@ export function apply(ctx: Context, config: Config): void {
   }), 'host-voice-agent: status route')
 
   const sockets = new WebSocketServer({ noServer: true })
-  // ws does not close accepted clients on server close; ending them here also
-  // ends their Gemini sessions when the plugin is disabled or reloaded.
   ctx.effect(() => () => {
     for (const client of sockets.clients) client.terminate()
     sockets.close()
@@ -89,27 +150,36 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => ctx.webServer.registerUpgrade({
     path: `${VOICE_AGENT_API_PATH}/ws`,
     handler: (req, socket, head) => {
-      // WebSockets are exempt from CORS: without this check any web page the
-      // user visits could open a call on their Gemini key.
       if (!isTrustedRequest(req)) {
         socket.end('HTTP/1.1 403 Forbidden\r\n\r\n')
         return
       }
       sockets.handleUpgrade(req, socket, head, (client) => {
-        void resolveApiKey().then((apiKey) => {
-          // The browser can hang up during the credential lookup; a Gemini
-          // session opened for a closed socket would never be closed.
+        const current = settings()
+        void resolveApiKey(current.provider).then((apiKey) => {
           if (client.readyState !== client.OPEN) return
-          const current = settings()
           if (apiKey === undefined) {
             client.send(JSON.stringify({
               type: 'error',
-              message: `No Gemini API key: set ${current.apiKeyEnv} in Settings → Plugins → Voice Agent`,
+              message: `未配置 ${current.provider} API 密钥：请在设置或环境变量 / D:/voicespirit/config.json 中配置`,
             }))
             client.close(1008, 'missing API key')
             return
           }
+          const fallback = loadVoiceSpiritFallback()
+          const extraKeys = fallback ? {
+            cartesiaApiKey: fallback.cartesiaApiKey,
+            deepseekApiKey: fallback.deepseekApiKey,
+            dashscopeApiKey: fallback.dashscopeApiKey,
+            dashscopeWsUrl: fallback.dashscopeWsUrl,
+            doubaoAccessToken: fallback.doubaoAccessToken,
+            doubaoAppId: fallback.doubaoAppId,
+            doubaoApiKey: fallback.doubaoApiKey,
+            googleApiKey: fallback.googleApiKey,
+          } : undefined
+
           runLiveCall(client, {
+            provider: current.provider,
             apiKey,
             model: current.model,
             voice: current.voice,
@@ -122,6 +192,7 @@ export function apply(ctx: Context, config: Config): void {
               textOutput: current.priceTextOutput,
             },
             logger: ctx.logger,
+            extraKeys,
           })
         }, (error: unknown) => {
           ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
@@ -132,18 +203,6 @@ export function apply(ctx: Context, config: Config): void {
   }), 'host-voice-agent: call upgrade')
 }
 
-/**
- * Whether a request may use this plugin's routes, following the harness API
- * trust fence. The Host must be a loopback authority: a DNS-rebound page
- * reaches this server under the attacker's domain, which the browser puts in
- * Host, and would otherwise pass an Origin-equals-Host check. A browser
- * marking the request cross-site is refused; an attached Origin must be this
- * exact authority. Requests without Origin (non-browser local clients) are
- * accepted once the Host check passes. The desktop app rewrites its window's
- * `dsh-app://app` Origin to the Host origin before the request leaves Electron.
- * @param req - the HTTP or upgrade request.
- * @returns true when the request is trusted.
- */
 function isTrustedRequest(req: IncomingMessage): boolean {
   const host = req.headers.host
   if (host === undefined) return false
@@ -151,7 +210,6 @@ function isTrustedRequest(req: IncomingMessage): boolean {
   try {
     hostUrl = new URL(`http://${host}`)
   } catch {
-    // An unparsable Host cannot name a loopback authority.
     return false
   }
   if (!isLoopbackHostname(hostUrl.hostname)) return false
@@ -161,15 +219,10 @@ function isTrustedRequest(req: IncomingMessage): boolean {
   try {
     return new URL(origin).host === hostUrl.host
   } catch {
-    // An unparsable Origin (including the opaque "null") cannot name this host.
     return false
   }
 }
 
-/**
- * @param hostname - WHATWG-normalized hostname (IPv6 in brackets).
- * @returns whether it names the local machine.
- */
 function isLoopbackHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/u.test(hostname)
 }

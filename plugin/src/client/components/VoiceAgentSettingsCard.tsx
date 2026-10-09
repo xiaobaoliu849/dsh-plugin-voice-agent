@@ -1,16 +1,20 @@
 /**
- * Settings → Plugins card for the `voice-agent` namespace: the Gemini API key
- * (written to the credentials store, never read back), model, voice, and
- * extra instructions.
+ * Settings → Plugins card for the `voice-agent` namespace: provider selection,
+ * API key, model, voice, and extra instructions.
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { VoiceAgentKey } from '../locales.ts'
+import {
+  PROVIDER_DEFAULT_MODELS, PROVIDER_DEFAULT_VOICES, PROVIDER_VOICES,
+  VOICE_AGENT_PROVIDERS, type VoiceAgentProvider,
+} from '../../constants.ts'
 import styles from './VoiceAgent.module.css'
 
 /** Client view of the host `voice-agent` settings section. */
 export interface VoiceAgentSettings {
+  provider: VoiceAgentProvider
   model: string
   voice: string
   apiKeyEnv: string
@@ -35,10 +39,22 @@ export interface VoiceAgentSettingsCardProps {
 
 type Notice = 'saved' | 'saveFailed' | null
 
+const PROVIDER_KEY_NAMES: Record<VoiceAgentProvider, VoiceAgentKey> = {
+  'cartesia-deepseek': 'providerCartesia',
+  qwen: 'providerQwen',
+  doubao: 'providerDoubao',
+  gemini: 'providerGemini',
+}
+
+const PROVIDER_ENV_DEFAULTS: Record<VoiceAgentProvider, string> = {
+  'cartesia-deepseek': 'DEEPSEEK_API_KEY',
+  qwen: 'DASHSCOPE_API_KEY',
+  doubao: 'DOUBAO_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+}
+
 /**
- * Render the card.
- * @param props - settings scope, credential access, voice list, and locale lookup.
- * @returns the card.
+ * Render the settings card.
  */
 export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceAgentSettingsCardProps) {
   const subscribe = useCallback((listener: () => void) => scope.subscribe(listener), [scope])
@@ -49,7 +65,9 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
   const [key, setKey] = useState('')
   const [keyConfigured, setKeyConfigured] = useState<boolean | undefined>(undefined)
   const [notice, setNotice] = useState<Notice>(null)
-  const ref = value?.apiKeyEnv ?? 'GEMINI_API_KEY'
+
+  const activeProvider: VoiceAgentProvider = draft?.provider ?? value?.provider ?? 'cartesia-deepseek'
+  const ref = value?.apiKeyEnv || PROVIDER_ENV_DEFAULTS[activeProvider] || 'GEMINI_API_KEY'
 
   const refreshKey = useCallback(async () => {
     setKeyConfigured(await credentials.configured(ref))
@@ -57,23 +75,38 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
   useEffect(() => { void refreshKey() }, [refreshKey])
 
   if (value === undefined) return null
-  const form = draft ?? { model: value.model, voice: value.voice, instructions: value.instructions }
-  const dirty = form.model !== value.model || form.voice !== value.voice || form.instructions !== value.instructions
+
+  const form: Omit<VoiceAgentSettings, 'apiKeyEnv'> = draft ?? {
+    provider: value.provider || 'cartesia-deepseek',
+    model: value.model,
+    voice: value.voice,
+    instructions: value.instructions,
+  }
+
+  const dirty = form.provider !== value.provider || form.model !== value.model || form.voice !== value.voice || form.instructions !== value.instructions
+
   const edit = (patch: Partial<typeof form>): void => {
     setNotice(null)
     setDraft({ ...form, ...patch })
   }
 
+  const handleProviderChange = (newProvider: VoiceAgentProvider): void => {
+    edit({
+      provider: newProvider,
+      model: PROVIDER_DEFAULT_MODELS[newProvider] ?? form.model,
+      voice: PROVIDER_DEFAULT_VOICES[newProvider] ?? form.voice,
+    })
+  }
+
   const save = async (): Promise<void> => {
     try {
-      const ops = (['model', 'voice', 'instructions'] as const)
+      const ops = (['provider', 'model', 'voice', 'instructions'] as const)
         .filter(field => form[field] !== value[field])
         .map(field => ({ op: 'set' as const, path: [field], value: form[field] }))
       const accepted = await scope.mutate(ops, snapshot.revision)
       if (accepted) setDraft(undefined)
       setNotice(accepted ? 'saved' : 'saveFailed')
     } catch {
-      // The scope reloads Host state after a refused write; the notice is the only report.
       setNotice('saveFailed')
     }
   }
@@ -84,19 +117,36 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
       setKey('')
       setNotice('saved')
     } catch {
-      // The re-read below reports whether the Host holds a key after the failure.
       setNotice('saveFailed')
     }
     await refreshKey()
   }
 
-  const voiceOptions = voices.includes(form.voice) ? voices : [form.voice, ...voices]
+  const availableVoices = PROVIDER_VOICES[form.provider] ?? voices
+  const voiceOptions = availableVoices.includes(form.voice) ? availableVoices : [form.voice, ...availableVoices]
+
   return (
     <div className={styles.card}>
       <div>
         <div className={styles.cardTitle}>{t('cardTitle')}</div>
         <div className={styles.cardDescription}>{t('cardDescription')}</div>
       </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="voice-agent-provider">{t('provider')}</label>
+        <select
+          id="voice-agent-provider"
+          className={styles.input}
+          value={form.provider}
+          disabled={snapshot.status !== 'ready'}
+          onChange={(event) => { handleProviderChange(event.target.value as VoiceAgentProvider) }}
+        >
+          {VOICE_AGENT_PROVIDERS.map(p => (
+            <option key={p} value={p}>{t(PROVIDER_KEY_NAMES[p])}</option>
+          ))}
+        </select>
+      </div>
+
       <div className={styles.field}>
         <label className={styles.label} htmlFor="voice-agent-key">
           {t('apiKey')}
@@ -118,6 +168,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
         </div>
         <span className={styles.fieldHint}>{t('apiKeyHint')} ({ref})</span>
       </div>
+
       <div className={styles.field}>
         <label className={styles.label} htmlFor="voice-agent-model">{t('model')}</label>
         <input
@@ -128,6 +179,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           onChange={(event) => { edit({ model: event.target.value }) }}
         />
       </div>
+
       <div className={styles.field}>
         <label className={styles.label} htmlFor="voice-agent-voice">{t('voice')}</label>
         <select
@@ -140,6 +192,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
           {voiceOptions.map(voice => <option key={voice} value={voice}>{voice}</option>)}
         </select>
       </div>
+
       <div className={styles.field}>
         <label className={styles.label} htmlFor="voice-agent-instructions">{t('instructions')}</label>
         <textarea
@@ -151,6 +204,7 @@ export function VoiceAgentSettingsCard({ scope, credentials, voices, t }: VoiceA
         />
         <span className={styles.fieldHint}>{t('instructionsHint')}</span>
       </div>
+
       <div className={styles.row}>
         <button type="button" className={styles.button} disabled={!dirty || snapshot.status !== 'ready'} onClick={() => { void save() }}>
           {t('save')}

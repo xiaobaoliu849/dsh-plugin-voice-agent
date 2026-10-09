@@ -2,15 +2,23 @@
 
 中文 | [English](README.md)
 
-像 Codex 实时语音一样，用语音指挥 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 编程智能体：Gemini Live 负责听和说，harness 智能体负责在你的项目里真正干活。支持 **DeepSeek Harness 桌面版**。
+像 Codex 实时语音一样，用语音实时指挥 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 编程智能体：语音模型负责即时听和说，harness 智能体负责在你的项目里真正干活。支持 **DeepSeek Harness 桌面版**。
 
 ```
-你说话 ─▶ Gemini Live（语音）──工具调用──▶ DeepSeek Harness 智能体（文件、终端、代码）
-                ▲                                        │
-                └──────── 用语音总结结果 ◀───────────────┘
+你说话 ─▶ 实时语音服务商 ──工具调用──▶ DeepSeek Harness 智能体（文件、终端、代码）
+          (Cartesia+DeepSeek /                 │
+           通义千问 / 豆包 / Gemini)           │
+                 ▲                             │
+                 └──────── 用语音总结结果 ◀────┘
 ```
 
-与 [Echo 插件](https://github.com/xiaobaoliu849/dsh-plugin-voicespirit) 不同，本插件不需要 Python 后端：harness 直接连接 Gemini Live。
+全面支持 4 大实时语音服务商：
+1. **Cartesia + DeepSeek**（推荐极速）：Cartesia Ink-2 极速语音识别 + DeepSeek-V3 流式大模型与工具调用 + Cartesia Sonic-2 超自然流式语音合成。
+2. **通义千问 (Qwen Realtime)**：阿里 DashScope 端到端多模态实时语音（`qwen3.8-omni-flash-realtime`）。
+3. **火山引擎 豆包 (Doubao Realtime)**：字节跳动豆包实时全双工语音大模型（`1.2.6.1`）。
+4. **Google Gemini Live**：谷歌双向流式实时语音（`gemini-3.8-live`）。
+
+**零配置自动继承**：插件会自动读取 `D:\voicespirit\config.json` 中的现有 API Key 与音色配置，无需重新手动复制粘贴即可直接开箱即用！
 
 ## 可以怎么说
 
@@ -30,10 +38,10 @@
 1. 退出桌面应用。
 2. 用应用自带的 `dsh` 命令把插件安装到桌面 profile（PowerShell）：
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.4.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.3.0.tgz
    ```
    也可以先下载 `.tgz` 文件，把 URL 换成本地路径。
-3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，保存 Gemini API Key（以 `GEMINI_API_KEY` 存入 harness 凭据存储）。如果 `~/.dsh/.credentials.yaml` 或环境变量 `GEMINI_API_KEY` 里已有 key，会直接使用。
+3. 启动桌面应用，打开 **插件 → dsh-plugin-voice-agent**，选择你喜欢的服务商（如 Cartesia + DeepSeek）。保存 API Key 或直接让系统自动读取 `D:\voicespirit\config.json` 或环境变量。
 4. 打开一个会话，点击输入框里的麦克风按钮，开始说话。
 
 卸载：在插件页面点击 **卸载**，或运行 `dsh.cmd plugin --profile desktop remove dsh-plugin-voice-agent`。
@@ -44,12 +52,13 @@
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|
-| `model` | `gemini-3.8-live` | Gemini Live 模型 ID（`supportedGenerationMethods` 包含 `bidiGenerateContent` 的模型） |
-| `voice` | `Puck` | Gemini 预置音色 |
-| `apiKeyEnv` | `GEMINI_API_KEY` | 保存 API Key 的凭据引用 |
+| `provider` | `cartesia-deepseek` | 语音服务商：`cartesia-deepseek`、`qwen`、`doubao` 或 `gemini` |
+| `model` | 各服务商默认 | 模型 ID（`deepseek-chat`、`qwen3.8-omni-flash-realtime`、`1.2.6.1`、`gemini-3.8-live`） |
+| `voice` | 各服务商默认 | 预置音色（如 `Katie`、`Tina`、`zh_female_vv_jupiter_bigtts`、`Puck`） |
+| `apiKeyEnv` | 各服务商默认 | 保存 API Key 的凭据引用 |
 | `instructions` | 空 | 追加到语音模型系统提示的文字，例如“始终用中文回答”。 |
-| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | Gemini 每百万输入 token 的美元单价，用于通话面板中的费用估算 |
-| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | Gemini 每百万输出 token 的美元单价（文本输出包含思考 token） |
+| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | 每百万输入 token 的美元单价，用于通话面板中的费用估算 |
+| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | 每百万输出 token 的美元单价（文本输出包含思考 token） |
 
 ## 工作原理
 

@@ -2,15 +2,23 @@
 
 [中文文档](README.zh.md) | English
 
-Talk to the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) coding agent by voice, the way Codex realtime works: a Gemini Live voice model listens and talks, and the harness agent does the actual work in your project. Works in the **DeepSeek Harness desktop app**.
+Talk to the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) coding agent by voice in realtime: a voice model listens and talks, and the harness agent does the actual coding work in your project. Works seamlessly in the **DeepSeek Harness desktop app**.
 
 ```
-You speak ─▶ Gemini Live (voice) ──tool call──▶ DeepSeek Harness agent (files, shell, code)
-                    ▲                                        │
-                    └──── spoken summary of the result ◀─────┘
+You speak ─▶ Realtime Voice Provider ──tool call──▶ DeepSeek Harness agent (files, shell, code)
+             (Cartesia+DeepSeek /                         │
+              Qwen / Doubao / Gemini)                     │
+                    ▲                                     │
+                    └──── spoken summary of the result ◀──┘
 ```
 
-Unlike the [Echo plugin](https://github.com/xiaobaoliu849/dsh-plugin-voicespirit), this plugin needs no Python backend: the harness talks to Gemini Live directly.
+Supports 4 voice backends:
+1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-2 STT + DeepSeek-V3 streaming + Cartesia Sonic-2 TTS.
+2. **Qwen Realtime (DashScope)**: Tongyi Qianwen end-to-end multimodal speech model (`qwen3.8-omni-flash-realtime`).
+3. **Doubao Realtime (Volcengine)**: ByteDance Doubao duplex speech dialogue.
+4. **Google Gemini Live**: Gemini bidirectional streaming voice (`gemini-3.8-live`).
+
+Zero-config setup: If you have existing API keys in `D:\voicespirit\config.json`, the plugin automatically loads Cartesia, DeepSeek, DashScope, Doubao, or Google keys without requiring manual entry!
 
 ## What you can say
 
@@ -30,10 +38,10 @@ Requires DeepSeek Harness desktop `0.2.0-rc.2` or a compatible release.
 1. Quit the desktop app.
 2. Install the bundle into the desktop profile with the app's own `dsh` command (PowerShell):
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.2.4.tgz
+   & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add https://github.com/xiaobaoliu849/dsh-plugin-voice-agent/raw/main/release/dsh-plugin-voice-agent-0.3.0.tgz
    ```
    A downloaded copy of the `.tgz` file works the same way: pass its local path instead of the URL.
-3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and save your Gemini API key (stored as `GEMINI_API_KEY` in the harness credentials store). A key already present in `~/.dsh/.credentials.yaml` or the `GEMINI_API_KEY` environment variable is used as is.
+3. Start the desktop app. Open **Plugins → dsh-plugin-voice-agent** and select your preferred voice provider. Save your API key or let it automatically resolve from `D:\voicespirit\config.json` or your environment variables.
 4. Open a conversation, click the mic button in the composer, and talk.
 
 To remove it, use **Uninstall** on the plugin's page, or `dsh.cmd plugin --profile desktop remove dsh-plugin-voice-agent`.
@@ -44,12 +52,13 @@ Edited on the plugin's page; changes apply to the next call without a restart.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `model` | `gemini-3.8-live` | Gemini Live model id (any model whose `supportedGenerationMethods` include `bidiGenerateContent`) |
-| `voice` | `Puck` | Prebuilt Gemini voice |
-| `apiKeyEnv` | `GEMINI_API_KEY` | Credential reference holding the API key |
+| `provider` | `cartesia-deepseek` | Voice provider: `cartesia-deepseek`, `qwen`, `doubao`, or `gemini` |
+| `model` | default per provider | Model id (`deepseek-chat`, `qwen3.8-omni-flash-realtime`, `1.2.6.1`, `gemini-3.8-live`) |
+| `voice` | default per provider | Prebuilt voice name or ID (e.g. `Katie`, `Tina`, `zh_female_vv_jupiter_bigtts`, `Puck`) |
+| `apiKeyEnv` | default per provider | Credential reference holding the API key |
 | `instructions` | empty | Extra text appended to the voice model's system prompt, e.g. "Always answer in Chinese." |
-| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | USD per million Gemini input tokens, for the cost shown in the call dock |
-| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | USD per million Gemini output tokens (text output includes thinking tokens) |
+| `priceAudioInput` / `priceTextInput` | `3` / `0.75` | USD per million input tokens, for the cost shown in the call dock |
+| `priceAudioOutput` / `priceTextOutput` | `4.5` / `4.5` | USD per million output tokens |
 
 ## How it works
 

@@ -67,3 +67,104 @@ export function buildInstructions(extra: string): string {
   const trimmed = extra.trim()
   return trimmed === '' ? BASE_INSTRUCTIONS : `${BASE_INSTRUCTIONS}\n\nAdditional instructions from the user:\n${trimmed}`
 }
+
+/** Standard OpenAI tool schema for DeepSeek Chat API & Doubao. */
+export const OPENAI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'ask_harness',
+      description: 'Give a new task to the DeepSeek Harness coding agent working in the user\'s project: reading or changing files, running commands, fixing bugs, explaining code, searching the codebase. Use this for ANY request about the user\'s project or computer.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task: {
+            type: 'string',
+            description: 'The user\'s request, as close to their own words as possible, in the SAME language they spoke (never translate).'
+          }
+        },
+        required: ['task']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'steer_harness',
+      description: 'Redirect the coding agent while it is already working: add a correction, a constraint, or extra detail to the running task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: {
+            type: 'string',
+            description: 'The correction or extra instruction for the running task, in the same language the user spoke; never translate it.'
+          }
+        },
+        required: ['message']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_harness',
+      description: 'Stop the coding agent\'s current task immediately. Use when the user says stop, cancel, or wait.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'harness_status',
+      description: 'Check what the coding agent is doing right now: whether it is working, which tools it recently used, and its latest answer.',
+      parameters: { type: 'object', properties: {} }
+    }
+  }
+] as const
+
+/** OpenAI Realtime tool schema for DashScope Realtime API (Qwen). */
+export const OPENAI_REALTIME_TOOLS = [
+  {
+    type: 'function',
+    name: 'ask_harness',
+    description: 'Give a new task to the DeepSeek Harness coding agent working in the user\'s project: reading or changing files, running commands, fixing bugs, explaining code, searching the codebase. Use this for ANY request about the user\'s project or computer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'The user\'s request, as close to their own words as possible, in the SAME language they spoke (never translate).'
+        }
+      },
+      required: ['task']
+    }
+  },
+  {
+    type: 'function',
+    name: 'steer_harness',
+    description: 'Redirect the coding agent while it is already working: add a correction, a constraint, or extra detail to the running task.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'The correction or extra instruction for the running task, in the same language the user spoke; never translate it.'
+        }
+      },
+      required: ['message']
+    }
+  },
+  {
+    type: 'function',
+    name: 'stop_harness',
+    description: 'Stop the coding agent\'s current task immediately. Use when the user says stop, cancel, or wait.',
+    parameters: { type: 'object', properties: {} }
+  },
+  {
+    type: 'function',
+    name: 'harness_status',
+    description: 'Check what the coding agent is doing right now: whether it is working, which tools it recently used, and its latest answer.',
+    parameters: { type: 'object', properties: {} }
+  }
+] as const
+

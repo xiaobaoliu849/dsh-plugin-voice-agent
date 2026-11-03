@@ -8,7 +8,7 @@
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { SpeechGate, startMic, SpeechPlayer, type MicCapture } from './audio.ts'
-import { HarnessBridge, type AgentActivity, type AgentNotice } from './bridge.ts'
+import { HarnessBridge, type AgentActivity, type AgentNotice, type AgentTask } from './bridge.ts'
 
 /** Host route the call WebSocket upgrades on. */
 const CALL_PATH = '/api/voice-agent/ws'
@@ -48,6 +48,12 @@ export interface VoiceAgentState {
   readonly error: string | null
   /** Gemini token and cost totals for this call; null until the first model turn reports usage. */
   readonly usage: CallUsage | null
+  /** Model id the Host reported when the call became ready. */
+  readonly model: string | null
+  /** When the call became live (ms since epoch), for the call timer. */
+  readonly liveSince: number | null
+  /** The task the agent is running for this call, if any. */
+  readonly task: AgentTask | null
 }
 
 /** Gemini usage totals for one call (mirrors the host package's CallUsage). */
@@ -73,7 +79,9 @@ type HostMessage =
   | { type: 'error'; message: string }
   | { type: 'usage'; usage: CallUsage }
 
-const IDLE: VoiceAgentState = { phase: 'idle', muted: false, activity: 'idle', lines: [], error: null, usage: null }
+const IDLE: VoiceAgentState = {
+  phase: 'idle', muted: false, activity: 'idle', lines: [], error: null, usage: null, model: null, liveSince: null, task: null,
+}
 
 /** Owns at most one call at a time. */
 export class VoiceAgentController {
@@ -82,6 +90,7 @@ export class VoiceAgentController {
   private socket: WebSocket | undefined
   private mic: MicCapture | undefined
   private player: SpeechPlayer | undefined
+  private gate: SpeechGate | undefined
   private bridge: HarnessBridge | undefined
   private sessionId: SessionId | undefined
   /** Incremented on every start and teardown; async steps from an older call abandon their result. */
@@ -141,6 +150,8 @@ export class VoiceAgentController {
       () => this.sessionId,
       (text, notice) => { this.sendUpdate(text, notice) },
       (activity) => { this.set({ ...this.state, activity }) },
+      (text) => { this.sendProgress(text) },
+      (task) => { this.set({ ...this.state, task }) },
     )
     const socket = new WebSocket(callUrl())
     socket.binaryType = 'arraybuffer'
@@ -156,14 +167,14 @@ export class VoiceAgentController {
       if (this.socket !== socket) return
       const message = event.code === 1000 ? null : (this.state.error ?? (event.reason || `Connection closed (${String(event.code)})`))
       this.teardown()
-      this.set({ ...this.state, phase: message === null ? 'idle' : 'error', error: message, activity: 'idle' })
+      this.set({ ...this.state, phase: message === null ? 'idle' : 'error', error: message, activity: 'idle', task: null, liveSince: null })
     }
   }
 
   /** Hang up. Tasks already handed to the agent keep running. */
   end(): void {
     this.teardown()
-    this.set({ ...this.state, phase: 'idle', activity: 'idle' })
+    this.set({ ...this.state, phase: 'idle', activity: 'idle', task: null, liveSince: null })
   }
 
   /** Toggle sending microphone audio. */
@@ -176,7 +187,13 @@ export class VoiceAgentController {
   private handle(message: HostMessage): void {
     switch (message.type) {
       case 'ready':
-        this.set({ ...this.state, phase: 'live', error: null })
+        this.set({
+          ...this.state,
+          phase: 'live',
+          error: null,
+          model: message.model,
+          liveSince: this.state.liveSince ?? Date.now(),
+        })
         if (this.mic === undefined && !this.micOpening) void this.openMic()
         return
       case 'input_transcript':
@@ -231,11 +248,12 @@ export class VoiceAgentController {
     const generation = this.generation
     this.micOpening = true
     try {
-      const gate = new SpeechGate(
+      const gate: SpeechGate = new SpeechGate(
         (frame) => { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(frame) },
         () => { this.send({ type: 'audio_end' }) },
         () => { this.userSpoke = true },
       )
+      this.gate = gate
       const mic = await startMic((frame) => { gate.push(frame) })
       // Hung up while the permission prompt or device setup was pending:
       // release the device instead of leaving it open without a call.
@@ -248,7 +266,7 @@ export class VoiceAgentController {
     } catch (error) {
       if (generation !== this.generation) return
       this.teardown()
-      this.set({ ...this.state, phase: 'error', activity: 'idle', error: error instanceof Error ? error.message : String(error) })
+      this.set({ ...this.state, phase: 'error', activity: 'idle', task: null, liveSince: null, error: error instanceof Error ? error.message : String(error) })
     } finally {
       if (generation === this.generation) this.micOpening = false
     }
@@ -257,6 +275,16 @@ export class VoiceAgentController {
   private sendUpdate(text: string, notice: AgentNotice): void {
     this.userSpoke = false
     this.pushLine({ role: 'agent', notice })
+    this.send({ type: 'agent_update', text })
+  }
+
+  /**
+   * Speak a progress note, unless the user or the voice is talking: a note
+   * must never cut into a conversation, and a skipped one is simply dropped.
+   * Unlike {@link sendUpdate} it keeps `userSpoke`, since it carries no agent output.
+   */
+  private sendProgress(text: string): void {
+    if (this.state.phase !== 'live' || this.player?.speaking === true || this.gate?.active === true) return
     this.send({ type: 'agent_update', text })
   }
 
@@ -287,6 +315,7 @@ export class VoiceAgentController {
     if (socket !== undefined && socket.readyState <= WebSocket.OPEN) socket.close(1000)
     this.mic?.stop()
     this.mic = undefined
+    this.gate = undefined
     this.player?.close()
     this.player = undefined
     this.bridge?.dispose()

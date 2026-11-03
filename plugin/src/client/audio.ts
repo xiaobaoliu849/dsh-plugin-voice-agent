@@ -45,6 +45,11 @@ export class SpeechGate {
     private readonly onSpeech: () => void,
   ) {}
 
+  /** @returns whether the user is speaking right now (frames are streaming). */
+  get active(): boolean {
+    return this.streaming
+  }
+
   /**
    * Route one captured frame.
    * @param frame - mono PCM16 at 16 kHz.

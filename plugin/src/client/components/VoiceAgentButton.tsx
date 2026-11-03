@@ -1,6 +1,11 @@
 /**
- * Composer mic button (`conversation.input.right`): starts or ends the voice
- * call that controls the agent.
+ * Composer voice-call button (`conversation.input.right`): starts or ends the
+ * voice call that controls the agent.
+ *
+ * It uses a sound-wave icon rather than a microphone, so it stays distinct
+ * from the Harness dictation microphone that can sit in the same composer.
+ * While a call is open it fills with the brand color, its bars move, and a
+ * soft ring pulses; while the agent waits for approval the ring turns amber.
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
@@ -18,7 +23,7 @@ export interface VoiceAgentButtonProps {
 }
 
 /**
- * Render the mic toggle.
+ * Render the voice-call toggle.
  * @param props - the call controller and locale lookup.
  * @returns the button.
  */
@@ -27,19 +32,27 @@ export function VoiceAgentButton({ controller, t, sessionId }: VoiceAgentButtonP
   useEffect(() => { controller.setSession(sessionId) }, [controller, sessionId])
   const active = state.phase !== 'idle' && state.phase !== 'error'
   const label = active ? t('endCall') : t('startCall')
+  const className = [
+    styles.callBtn,
+    active ? styles.callBtnActive : '',
+    state.phase === 'connecting' || state.phase === 'reconnecting' ? styles.callBtnPending : '',
+    active && state.activity === 'approval' ? styles.callBtnApproval : '',
+  ].filter(Boolean).join(' ')
   return (
     <button
       type="button"
-      className={`${styles.micBtn} ${active ? styles.micBtnActive : ''}`}
+      className={className}
       onClick={() => { if (active) controller.end(); else void controller.start() }}
       title={label}
       aria-label={label}
       aria-pressed={active}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-        <line x1="12" y1="19" x2="12" y2="22" />
+      <svg className={styles.waveIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+        <line className={styles.waveIconBar} x1="4" y1="10" x2="4" y2="14" />
+        <line className={styles.waveIconBar} x1="8" y1="6" x2="8" y2="18" />
+        <line className={styles.waveIconBar} x1="12" y1="3" x2="12" y2="21" />
+        <line className={styles.waveIconBar} x1="16" y1="7" x2="16" y2="17" />
+        <line className={styles.waveIconBar} x1="20" y1="10" x2="20" y2="14" />
       </svg>
     </button>
   )

@@ -27,6 +27,13 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 /** Longest final answer forwarded to the voice model, in characters. */
 const MAX_ANSWER_CHARS = 1500
 
+/** A task running this long gets its first spoken progress note. */
+const PROGRESS_FIRST_MS = 20_000
+/** Minimum gap between later progress notes for the same task. */
+const PROGRESS_EVERY_MS = 40_000
+/** Most progress notes spoken for one task; the final report always follows. */
+const MAX_PROGRESS_NOTES = 3
+
 /** One task the voice model handed to the agent and is waiting on. */
 interface Watch {
   readonly task: string
@@ -37,6 +44,12 @@ interface Watch {
   answer: string
   /** Set by stop_harness: the turn's end is not reported. */
   silenced: boolean
+  /** When the task was handed to the agent (ms since epoch). */
+  readonly startedAt: number
+  /** Earliest time the next spoken progress note may go out. */
+  nextProgressAt: number
+  /** Progress notes already sent for this task. */
+  progressNotes: number
 }
 
 /** Per-session event-window follower shared by all watches on that session. */
@@ -50,6 +63,20 @@ interface Follower {
 
 /** What the dock shows about the agent. */
 export type AgentActivity = 'idle' | 'working' | 'approval'
+
+/** What the dock shows about the task the agent is running for this call. */
+export interface AgentTask {
+  /** The task as handed to the agent (the user's own words). */
+  readonly text: string
+  /** Most recent tool the agent called for it, if any. */
+  readonly tool: string | undefined
+  /** Number of tool calls so far. */
+  readonly steps: number
+  /** When the task was handed over (ms since epoch). */
+  readonly startedAt: number
+  /** Further tasks queued behind this one. */
+  readonly queued: number
+}
 
 /** The short dock line for one report: what happened, and the task or tool it concerns. */
 export interface AgentNotice {
@@ -68,12 +95,17 @@ export class HarnessBridge {
    * @param currentSession - the session the call controls (the one the mic button belongs to).
    * @param report - sends one `[agent update]` text to the voice model, with its dock notice.
    * @param onActivity - receives agent activity changes for the dock.
+   * @param progress - sends one `[agent progress]` note; it quotes only the
+   *   user's task and tool names, never agent output.
+   * @param onTask - receives the running task's live view, or null when none runs.
    */
   constructor(
     private readonly sessions: ISessions,
     private readonly currentSession: () => SessionId | undefined,
     private readonly report: (text: string, notice: AgentNotice) => void,
     private readonly onActivity: (activity: AgentActivity) => void,
+    private readonly progress: (text: string) => void = () => {},
+    private readonly onTask: (task: AgentTask | null) => void = () => {},
   ) {}
 
   /**
@@ -113,9 +145,14 @@ export class HarnessBridge {
     // The watch exists before the prompt is sent: the prompt's `user/message`
     // and `turn/start` can be published before the prompt call resolves.
     await this.submit(follower, task, 'queue', (requestId) => {
-      follower.watches.push({ task, requestId, turn: undefined, tools: [], answer: '', silenced: false })
+      const startedAt = Date.now()
+      follower.watches.push({
+        task, requestId, turn: undefined, tools: [], answer: '', silenced: false,
+        startedAt, nextProgressAt: startedAt + PROGRESS_FIRST_MS, progressNotes: 0,
+      })
     })
     this.onActivity('working')
+    this.publishTask(follower)
     return {
       status: wasRunning ? 'queued' : 'started',
       note: wasRunning
@@ -248,9 +285,14 @@ export class HarnessBridge {
         if (watch !== undefined) watch.turn = follower.lastTurn
         return
       }
-      case 'tool/call':
-        this.watchOf(follower, event.data.turn)?.tools.push(event.data.name)
+      case 'tool/call': {
+        const watch = this.watchOf(follower, event.data.turn)
+        if (watch === undefined) return
+        watch.tools.push(event.data.name)
+        this.publishTask(follower)
+        this.maybeProgress(watch)
         return
+      }
       case 'assistant/message': {
         const watch = this.watchOf(follower, event.data.turn)
         const text = event.data.message.content
@@ -276,6 +318,33 @@ export class HarnessBridge {
     }
   }
 
+  /** Publish the oldest pending task (the one the agent is running) to the dock. */
+  private publishTask(follower: Follower): void {
+    const watch = follower.watches[0]
+    this.onTask(watch === undefined ? null : {
+      text: watch.task,
+      tool: watch.tools.at(-1),
+      steps: watch.tools.length,
+      startedAt: watch.startedAt,
+      queued: follower.watches.length - 1,
+    })
+  }
+
+  /**
+   * Send a short spoken progress note when a task has been running a while.
+   * Only the user's own task text and tool names go into it, so it cannot
+   * carry file or web content to the voice model.
+   */
+  private maybeProgress(watch: Watch): void {
+    const now = Date.now()
+    if (watch.silenced || watch.progressNotes >= MAX_PROGRESS_NOTES || now < watch.nextProgressAt) return
+    watch.progressNotes += 1
+    watch.nextProgressAt = now + PROGRESS_EVERY_MS
+    const recent = [...new Set(watch.tools.slice(-6))].slice(-3).join(', ')
+    const seconds = Math.round((now - watch.startedAt) / 1000)
+    this.progress(`[agent progress] The agent is still working on "${quoted(watch.task)}" (${String(seconds)} seconds so far, ${String(watch.tools.length)} steps). Latest steps: ${recent}.`)
+  }
+
   private watchOf(follower: Follower, turn: number): Watch | undefined {
     return follower.watches.find(watch => watch.turn === turn)
   }
@@ -285,6 +354,7 @@ export class HarnessBridge {
     if (index === -1) return
     const [watch] = follower.watches.splice(index, 1)
     if (follower.watches.length === 0) this.onActivity('idle')
+    this.publishTask(follower)
     if (watch === undefined || watch.silenced) return
     const tools = watch.tools.length === 0 ? 'none' : [...new Set(watch.tools)].join(', ')
     if (reason.kind === 'aborted') {

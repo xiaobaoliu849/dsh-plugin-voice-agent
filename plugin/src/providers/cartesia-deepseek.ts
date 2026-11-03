@@ -74,6 +74,8 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
   let currentTurnSeq = 0
   let currentContextId = ''
   let outputLanguage: 'zh' | 'en' = 'zh'
+  /** Language of the user's last spoken turn; agent messages reuse it. */
+  let userLanguage: 'zh' | 'en' = 'zh'
   let currentAbortController: AbortController | null = null
 
   const pendingAudio: Buffer[] = []
@@ -185,7 +187,13 @@ export function runCartesiaDeepSeekCall(client: WebSocket, options: ProviderSess
 
   const generateReply = async (userPrompt: string): Promise<void> => {
     bargeIn()
-    outputLanguage = /\p{Script=Han}/u.test(userPrompt) ? 'zh' : 'en'
+    // Agent reports and progress notes are written in English around the
+    // user's task, so they must not switch the voice away from the language
+    // the user actually spoke.
+    if (!userPrompt.startsWith('[agent ')) {
+      userLanguage = /\p{Script=Han}/u.test(userPrompt) ? 'zh' : 'en'
+    }
+    outputLanguage = userLanguage
     currentTurnSeq += 1
     const seq = currentTurnSeq
     const contextId = `vs-ds-${seq}-${Date.now().toString(36)}`

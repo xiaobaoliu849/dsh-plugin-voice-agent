@@ -4,6 +4,7 @@ import { runGeminiCall } from './providers/gemini.ts'
 import { runCartesiaDeepSeekCall } from './providers/cartesia-deepseek.ts'
 import { runQwenCall } from './providers/qwen.ts'
 import { runDoubaoCall } from './providers/doubao.ts'
+import { runMossCall } from './providers/moss.ts'
 
 export type {
   BrowserMessage,
@@ -34,6 +35,9 @@ export function runLiveCall(client: WebSocket, options: ProviderSessionOptions):
       break
     case 'gemini':
       runGeminiCall(client, options)
+      break
+    case 'moss':
+      runMossCall(client, options)
       break
     default:
       options.logger.warn('voice-agent: unknown provider "%s", falling back to cartesia-deepseek', provider)

@@ -71,6 +71,7 @@ export function apply(ctx: Context, config: Config): void {
       'qwen': ['DASHSCOPE_API_KEY'],
       'doubao': ['DOUBAO_API_KEY', 'VOLC_API_KEY', 'VOLC_ACCESS_KEY'],
       'gemini': ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+      'moss': ['MOSS_API_KEY'],
     }
 
     for (const envName of envMap[provider] ?? []) {
@@ -91,6 +92,8 @@ export function apply(ctx: Context, config: Config): void {
         return fallback.doubaoApiKey || fallback.doubaoAccessToken
       } else if (provider === 'gemini' && fallback.googleApiKey) {
         return fallback.googleApiKey
+      } else if (provider === 'moss' && fallback.mossApiKey) {
+        return fallback.mossApiKey
       }
     }
 
@@ -156,6 +159,8 @@ export function apply(ctx: Context, config: Config): void {
             doubaoAppId: fallback.doubaoAppId,
             doubaoApiKey: fallback.doubaoApiKey,
             googleApiKey: fallback.googleApiKey,
+            mossApiKey: fallback.mossApiKey,
+            mossWsUrl: fallback.mossWsUrl,
           } : undefined
 
           runLiveCall(client, {

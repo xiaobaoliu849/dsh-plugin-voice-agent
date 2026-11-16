@@ -57,5 +57,7 @@ export interface ProviderSessionOptions {
     doubaoAppId?: string | undefined
     doubaoApiKey?: string | undefined
     googleApiKey?: string | undefined
+    mossApiKey?: string | undefined
+    mossWsUrl?: string | undefined
   } | undefined
 }

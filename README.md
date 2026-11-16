@@ -12,13 +12,14 @@ You speak ─▶ Realtime Voice Provider ──tool call──▶ DeepSeek Harne
                     └──── spoken summary of the result ◀──┘
 ```
 
-Supports 4 voice backends:
+Supports 5 voice backends:
 1. **Cartesia + DeepSeek** (Recommended ultra-fast): Cartesia Ink-Whisper STT (Chinese-pinned with automatic English retry) + DeepSeek-V4.1-Flash streaming + Cartesia Sonic 3.6 TTS with the Jing voice, verified through the API for both Chinese and English output.
 2. **Qwen Realtime (DashScope)**: Tongyi Qianwen end-to-end multimodal speech model (`qwen3.8-omni-flash-realtime`).
 3. **Doubao Realtime (Volcengine)**: ByteDance Doubao duplex speech dialogue.
 4. **Google Gemini Live**: Gemini bidirectional streaming voice (`gemini-3.8-live`).
+5. **MOSS-Live (MOSI)**: Full-duplex realtime speech model (`moss-live-1.0`) with server-side turn-taking/barge-in, 48 kHz→24 kHz audio downsampling, playback clock acks, and DeepSeek voice-control tool routing.
 
-Zero-config setup: If you have existing API keys in `D:\voicespirit\config.json`, the plugin automatically loads Cartesia, DeepSeek, DashScope, Doubao, or Google keys without requiring manual entry!
+Zero-config setup: If you have existing API keys in `D:\voicespirit\config.json`, the plugin automatically loads Cartesia, DeepSeek, DashScope, Doubao, Google, or MOSS keys without requiring manual entry!
 
 ## What you can say
 
@@ -52,8 +53,8 @@ Edited on the plugin's page; changes apply to the next call without a restart.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `provider` | `cartesia-deepseek` | Voice provider: `cartesia-deepseek`, `qwen`, `doubao`, or `gemini` |
-| `model` | default per provider | Model id (`deepseek-flash`, `qwen3.8-omni-flash-realtime`, `1.2.6.1`, `gemini-3.8-live`) |
+| `provider` | `cartesia-deepseek` | Voice provider: `cartesia-deepseek`, `qwen`, `doubao`, `gemini`, or `moss` |
+| `model` | default per provider | Model id (`deepseek-flash`, `qwen3.8-omni-flash-realtime`, `1.2.6.1`, `gemini-3.8-live`, `moss-live-1.0`) |
 | `voice` | default per provider | Prebuilt voice name or ID (e.g. `Katie`, `Tina`, `zh_female_vv_jupiter_bigtts`, `Puck`) |
 | `apiKeyEnv` | default per provider | Credential reference holding the API key |
 | `instructions` | empty | Extra text appended to the voice model's system prompt, e.g. "Always answer in Chinese." |

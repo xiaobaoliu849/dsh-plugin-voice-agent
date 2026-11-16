@@ -10,6 +10,8 @@ export interface VoiceSpiritFallbackConfig {
   doubaoAppId?: string | undefined
   doubaoApiKey?: string | undefined
   googleApiKey?: string | undefined
+  mossApiKey?: string | undefined
+  mossWsUrl?: string | undefined
 }
 
 let cachedVoiceSpiritConfig: VoiceSpiritFallbackConfig | null | undefined
@@ -34,6 +36,8 @@ export function loadVoiceSpiritFallback(): VoiceSpiritFallbackConfig | null {
       doubaoAppId: keys.doubao_app_id ? keys.doubao_app_id.trim() : undefined,
       doubaoApiKey: keys.doubao_websearch_api_key ? keys.doubao_websearch_api_key.trim() : undefined,
       googleApiKey: keys.google_api_key ? keys.google_api_key.trim() : undefined,
+      mossApiKey: keys.moss_api_key ? keys.moss_api_key.trim() : undefined,
+      mossWsUrl: urls.MOSS ? urls.MOSS.trim() : undefined,
     }
   } catch {
     cachedVoiceSpiritConfig = null
